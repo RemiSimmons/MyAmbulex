@@ -54,9 +54,10 @@ const createRideSchema = z.object({
   // Core ride details
   pickupLocation: z.string().min(3, "Please enter a valid pickup location"),
   dropoffLocation: z.string().min(3, "Please enter a valid destination"),
-  scheduledTime: z.coerce.date().min(new Date(), {
-    message: "Scheduled time must be in the future",
-  }),
+  scheduledTime: z.coerce.date().refine(
+    (date) => date > new Date(),
+    { message: "Pickup date and time must be in the future. Please select a valid future date and time." }
+  ),
   vehicleType: z.enum(["standard", "wheelchair", "stretcher"]),
   riderBid: z.coerce.number().min(10, "Bid must be at least $10"),
 
@@ -74,7 +75,10 @@ const createRideSchema = z.object({
 
   // Round trip options
   isRoundTrip: z.boolean().default(false),
-  returnTime: z.coerce.date().optional(),
+  returnTime: z.coerce.date().refine(
+    (date) => date > new Date(),
+    { message: "Return date and time must be in the future." }
+  ).optional(),
 });
 
 type CreateRideValues = z.infer<typeof createRideSchema>;
@@ -396,6 +400,31 @@ export default function BookRide() {
   }
 
   function handleRideSubmission(values: CreateRideValues) {
+    // Check if scheduled time is in the past
+    const now = new Date();
+    const scheduledTime = new Date(values.scheduledTime);
+    if (scheduledTime <= now) {
+      toast({
+        title: "Invalid date and time",
+        description: "Pickup date and time must be in the future. Please select a valid future date and time.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if return time is in the past (for round trips)
+    if (values.isRoundTrip && values.returnTime) {
+      const returnTime = new Date(values.returnTime);
+      if (returnTime <= now) {
+        toast({
+          title: "Invalid return time",
+          description: "Return date and time must be in the future. Please select a valid future date and time.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     // Check if required coordinates are available
     if (!pickupCoordinates || !dropoffCoordinates) {
       toast({

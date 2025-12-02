@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,60 @@ import {
   Play
 } from 'lucide-react';
 
+// YouTube Video Player Component - Shows thumbnail, plays inline on click
+function VideoPlayer() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoId = 'EiqJLRkLa7U';
+
+  return (
+    <div className="mb-8 max-w-4xl mx-auto">
+      <div className="relative bg-black rounded-lg overflow-hidden shadow-2xl">
+        <div className="aspect-video relative">
+          {!isPlaying ? (
+            <>
+              {/* YouTube Thumbnail */}
+              <img 
+                src={`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+                alt="MyAmbulex Platform Demo Video"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                }}
+              />
+              {/* Play Button Overlay */}
+              <button
+                onClick={() => setIsPlaying(true)}
+                className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors cursor-pointer group"
+                aria-label="Play video"
+              >
+                <div className="w-20 h-20 bg-red-600 group-hover:bg-red-500 group-hover:scale-110 rounded-full flex items-center justify-center transition-all shadow-lg">
+                  <Play className="w-10 h-10 text-white ml-1" fill="white" />
+                </div>
+              </button>
+              {/* Duration Badge */}
+              <div className="absolute bottom-3 right-3 bg-black/80 text-white text-xs px-2 py-1 rounded">
+                0:29
+              </div>
+            </>
+          ) : (
+            /* YouTube Iframe - loads when play is clicked */
+            <iframe
+              width="100%"
+              height="100%"
+              src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
+              title="Drive with Purpose | Drive with MyAmbulex"
+              style={{ border: 'none' }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="absolute inset-0 w-full h-full"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const [email, setEmail] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -31,23 +85,6 @@ export default function LandingPage() {
   const [riderSubmitted, setRiderSubmitted] = useState(false);
   const [showRiderFormInSection, setShowRiderFormInSection] = useState(false);
   const [riderSectionEmail, setRiderSectionEmail] = useState('');
-  const [showVideoOverlay, setShowVideoOverlay] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Detect mobile devices for video optimization
-  useEffect(() => {
-    const checkMobile = () => {
-      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
-      const isMobileDevice = /android|blackberry|iphone|ipad|ipod|opera mini|iemobile|wpdesktop/i.test(userAgent.toLowerCase());
-      const isSmallScreen = window.innerWidth <= 768;
-      setIsMobile(isMobileDevice || isSmallScreen);
-      console.log('Mobile detection:', { isMobileDevice, isSmallScreen, userAgent: userAgent.substring(0, 50) });
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   const handleEmailSubmit = async (e: React.FormEvent, type: 'general' | 'driver' | 'rider') => {
     e.preventDefault();
@@ -104,140 +141,21 @@ export default function LandingPage() {
               Founding members lock in lifetime perks, priority rides, and low fees.
             </p>
             
-            {/* Video Section - Mobile Optimized */}
-            <div className="mb-8 max-w-4xl mx-auto">
-              <div className="relative bg-black rounded-lg overflow-hidden shadow-2xl">
-                
-
-                <video 
-                  ref={(video) => {
-                    if (video) {
-                      video.addEventListener('play', () => setShowVideoOverlay(false));
-                      video.addEventListener('error', (e) => {
-                        console.error('Video format error detected');
-                        setShowVideoOverlay(false);
-                        // Show format error fallback immediately
-                        const errorDiv = document.createElement('div');
-                        errorDiv.className = 'absolute inset-0 bg-gradient-to-br from-blue-900 to-blue-700 flex flex-col items-center justify-center p-6 text-white text-center';
-                        errorDiv.innerHTML = `
-                          <div class="mb-6">
-                            <svg class="w-16 h-16 mx-auto mb-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-                            </svg>
-                          </div>
-                          <h3 class="text-xl font-bold mb-3">MyAmbulex Platform Demo</h3>
-                          <p class="text-blue-100 mb-6 max-w-md">
-                            See how our platform revolutionizes medical transportation with direct driver connections and competitive bidding in just 50 seconds.
-                          </p>
-                          <div class="space-y-3">
-                            <a href="/attached_assets/Revolutionize Your Medical Transport with MyAmbulex_1756911087803.mp4" 
-                               target="_blank" 
-                               class="block bg-yellow-500 text-black px-6 py-3 rounded-lg font-semibold hover:bg-yellow-400 transition-colors">
-                              Watch Video (Download)
-                            </a>
-                            <p class="text-xs text-blue-200">
-                              Video will open in new tab or download to your device
-                            </p>
-                          </div>
-                        `;
-                        video.parentElement?.appendChild(errorDiv);
-                        video.style.display = 'none';
-                      });
-                    }
-                  }}
-                  controls={!showVideoOverlay}
-                  className="w-full h-auto"
-                  preload="metadata"
-                  poster="/attached_assets/Gemini_Generated_Image_g5sgghg5sgghg5sg_1754078588695.jpg"
-                  playsInline
-                  webkit-playsinline="true"
-                  muted={showVideoOverlay}
-                  style={{ maxHeight: '500px' }}
-                  onError={() => {
-                    console.error('Video failed to load - unsupported format');
-                    setShowVideoOverlay(false);
-                  }}
-                >
-                  <source src="/attached_assets/Revolutionize Your Medical Transport with MyAmbulex_1756911087803.mp4" type="video/mp4" />
-                  <p className="text-white p-6 text-center">
-                    Video format not supported on this device. 
-                    <a href="/attached_assets/Revolutionize Your Medical Transport with MyAmbulex_1756911087803.mp4" 
-                       className="text-blue-300 underline ml-1"
-                       target="_blank">
-                      Download video instead
-                    </a>
-                  </p>
-                </video>
-                
-                {/* Custom play button overlay */}
-                {showVideoOverlay && (
-                  <div 
-                    className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors cursor-pointer"
-                    onClick={async () => {
-                      const video = document.querySelector('video');
-                      if (video) {
-                        try {
-                          // Simple play attempt - try unmuted first for user interaction
-                          video.muted = false;
-                          await video.play();
-                          setShowVideoOverlay(false);
-                        } catch (error) {
-                          console.log('Unmuted play failed, trying muted:', error);
-                          // Fallback: try muted for mobile browsers
-                          try {
-                            video.muted = true;
-                            await video.play();
-                            setShowVideoOverlay(false);
-                          } catch (mutedError) {
-                            console.error('Video play failed:', mutedError);
-                            // Enhanced fallback for format issues
-                            setShowVideoOverlay(false);
-                            
-                            // Create professional fallback interface
-                            const fallbackDiv = document.createElement('div');
-                            fallbackDiv.className = 'absolute inset-0 bg-gradient-to-br from-blue-900 to-blue-700 flex flex-col items-center justify-center p-6 text-white text-center';
-                            fallbackDiv.innerHTML = `
-                              <div class="mb-6">
-                                <svg class="w-16 h-16 mx-auto mb-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-                                </svg>
-                              </div>
-                              <h3 class="text-xl font-bold mb-3">MyAmbulex Platform Demo</h3>
-                              <p class="text-blue-100 mb-6 max-w-md">
-                                Experience how our platform connects riders directly with qualified medical transport drivers through competitive bidding.
-                              </p>
-                              <div class="space-y-3">
-                                <button onclick="window.open('/attached_assets/Revolutionize Your Medical Transport with MyAmbulex_1756911087803.mp4', '_blank')" 
-                                       class="block bg-yellow-500 text-black px-6 py-3 rounded-lg font-semibold hover:bg-yellow-400 transition-colors cursor-pointer">
-                                  Watch Video (External)
-                                </button>
-                                <p class="text-xs text-blue-200">
-                                  Opens in new tab for better device compatibility
-                                </p>
-                              </div>
-                            `;
-                            video.parentElement?.appendChild(fallbackDiv);
-                            video.style.display = 'none';
-                          }
-                        }
-                      }
-                    }}
-                  >
-                    <div className="text-center">
-                      <div className="w-20 h-20 mx-auto bg-white/90 hover:bg-white rounded-full flex items-center justify-center mb-4 transition-colors shadow-lg">
-                        <Play className="w-8 h-8 text-blue-600 ml-1" />
-                      </div>
-                      <div className="bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2">
-                        <h3 className="text-white font-bold text-lg mb-1">See MyAmbulex in Action</h3>
-                        <p className="text-blue-100 text-sm">50 seconds</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <p className="text-center text-blue-100 text-sm mt-2">
+            {/* Video Section - Click to Play Inline */}
+            <VideoPlayer />
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-4 mb-8">
+              <p className="text-blue-100 text-sm">
                 Watch how drivers and riders connect on our platform
               </p>
+              <a 
+                href="https://www.youtube.com/@MyAmbulex" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-yellow-400 hover:text-yellow-300 text-sm font-medium flex items-center gap-1 transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                View more videos on our channel
+              </a>
             </div>
             
             <div className="flex justify-center">

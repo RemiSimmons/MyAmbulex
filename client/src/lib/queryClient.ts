@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { apiUrl } from "./api-config";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -60,8 +61,11 @@ export async function apiRequest(
 ): Promise<Response> {
   const { signal, retries: configRetries = 2, extraOptions = {} } = options || {};
   
+  // Use apiUrl helper to prepend API base URL if configured
+  const fullUrl = apiUrl(url);
+  
   try {
-    console.log(`Making ${method} request to ${url}`, data);
+    console.log(`Making ${method} request to ${fullUrl}`, data);
     
     // Check if we have an abort signal that's already aborted
     if (signal && signal.aborted) {
@@ -97,7 +101,7 @@ export async function apiRequest(
         fetchOptions.credentials = "include" as RequestCredentials;
         
         // Make the fetch request
-        res = await fetch(url, fetchOptions);
+        res = await fetch(fullUrl, fetchOptions);
         break; // Exit the loop if fetch succeeds
       } catch (fetchError) {
         // Don't retry if the request was deliberately aborted
@@ -129,7 +133,7 @@ export async function apiRequest(
       throw new Error('Network request failed - no response received');
     }
     
-    console.log(`Received response from ${url}:`, {
+    console.log(`Received response from ${fullUrl}:`, {
       status: res.status,
       statusText: res.statusText,
       // Convert headers to simple object for logging
@@ -146,7 +150,7 @@ export async function apiRequest(
     if (err instanceof DOMException && err.name === 'AbortError') {
       console.log(`Request to ${url} was aborted`);
     } else {
-      console.error(`Failed ${method} request to ${url}:`, err);
+      console.error(`Failed ${method} request to ${fullUrl}:`, err);
     }
     throw err;
   }
@@ -159,11 +163,13 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey, signal }) => {
     try {
-      console.log(`Making GET request to ${queryKey[0]}`);
+      // Use apiUrl helper to prepend API base URL if configured
+      const url = apiUrl(queryKey[0] as string);
+      console.log(`Making GET request to ${url}`);
       
       // Check if the request has already been aborted
       if (signal && signal.aborted) {
-        console.log(`Request to ${queryKey[0]} was aborted before it started`);
+        console.log(`Request to ${url} was aborted before it started`);
         return null; // Return null instead of throwing to prevent unhandled promise rejection
       }
       
@@ -174,7 +180,7 @@ export const getQueryFn: <T>(options: {
       
       while (retries <= maxRetries) {
         try {
-          res = await fetch(queryKey[0] as string, {
+          res = await fetch(url, {
             method: 'GET',
             headers: {
               // Add cache-busting headers
@@ -189,12 +195,12 @@ export const getQueryFn: <T>(options: {
         } catch (fetchError) {
           // Don't retry if the request was deliberately aborted
           if (fetchError instanceof DOMException && fetchError.name === 'AbortError') {
-            console.log(`Request to ${queryKey[0]} was aborted`);
+            console.log(`Request to ${url} was aborted`);
             return null; // Return null instead of throwing to prevent unhandled promise rejection
           }
           
           retries++;
-          console.warn(`Fetch attempt ${retries} failed for ${queryKey[0]}:`, fetchError);
+          console.warn(`Fetch attempt ${retries} failed for ${url}:`, fetchError);
           
           if (retries > maxRetries) {
             throw new Error(`Network request failed after ${maxRetries} attempts: ${(fetchError as Error).message}`);
@@ -205,7 +211,7 @@ export const getQueryFn: <T>(options: {
           
           // Check if aborted during retry delay
           if (signal && signal.aborted) {
-            console.log(`Request to ${queryKey[0]} was aborted during retry delay`);
+            console.log(`Request to ${url} was aborted during retry delay`);
             return null; // Return null instead of throwing to prevent unhandled promise rejection
           }
         }
@@ -216,7 +222,7 @@ export const getQueryFn: <T>(options: {
       }
       
       // If the query is for user data and we're in the middle of logout, fail quietly
-      const isUserQuery = typeof queryKey[0] === 'string' && queryKey[0].endsWith('/api/user');
+      const isUserQuery = url.endsWith('/api/user');
       const isLoggingOut = document.cookie.includes('logging_out=true');
       
       if (isUserQuery && isLoggingOut) {
@@ -224,7 +230,7 @@ export const getQueryFn: <T>(options: {
         return null;
       }
       
-      console.log(`Received response from ${queryKey[0]}:`, {
+      console.log(`Received response from ${url}:`, {
         status: res.status,
         statusText: res.statusText,
       });
@@ -241,7 +247,7 @@ export const getQueryFn: <T>(options: {
             detail: { 
               statusCode: res.status, 
               message: "Session expired or unauthorized access",
-              url: queryKey[0] as string,
+              url: url,
               timestamp: new Date().toISOString(),
               data: await res.text().catch(() => "No response body")
             } 
@@ -276,21 +282,21 @@ export const getQueryFn: <T>(options: {
             logData = `${stringData.substring(0, 500)}... [truncated]`;
           }
         }
-        console.log(`Response data from ${queryKey[0]}:`, logData);
+        console.log(`Response data from ${url}:`, logData);
         
         return jsonData;
       } else {
-        console.log(`Non-JSON response from ${queryKey[0]}`);
+        console.log(`Non-JSON response from ${url}`);
         return null;
       }
     } catch (err) {
       // Handle aborted requests gracefully - don't treat them as real errors
       if (err instanceof DOMException && err.name === 'AbortError') {
-        console.log(`Request to ${queryKey[0]} was aborted`);
+        console.log(`Request to ${url} was aborted`);
         // For AbortErrors, return null instead of throwing - this prevents unhandled rejections
         return null;
       } else {
-        console.error(`Error in query to ${queryKey[0]}:`, err);
+        console.error(`Error in query to ${url}:`, err);
         throw err;
       }
     }
