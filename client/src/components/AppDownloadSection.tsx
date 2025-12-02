@@ -137,11 +137,12 @@ export function AppDownloadSection() {
           <div className="flex justify-center lg:justify-end">
             <div className="relative">
               <img 
-                src="/app-preview-phone.png" 
+                src="/app-preview-phone.png?v=2" 
                 alt="MyAmbulex App Preview - Book rides, track drivers, manage appointments"
                 className="w-auto h-[32rem] lg:h-[40rem] max-w-full object-contain drop-shadow-2xl"
                 onError={(e) => {
                   // Fallback if image doesn't exist
+                  console.error('App preview image failed to load:', e);
                   console.warn('App preview image not found. Please add app-preview-phone.png to the public folder.');
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
