@@ -338,6 +338,7 @@ app.post('/api/logout', (req, res) => {
 
 // Google OAuth routes
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  // Store role preference before OAuth redirect
   app.get('/api/auth/google', (req, res, next) => {
     console.log('🔐 Starting Google OAuth flow...');
     const role = req.query.role as string;
@@ -345,11 +346,15 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       (req.session as any).oauthSignupRole = role;
       console.log('📝 Stored OAuth signup role:', role);
     }
-    next();
-  }, passport.authenticate('google', { 
-    scope: ['profile', 'email'],
-    state: true
-  }));
+    // Save session before OAuth redirect
+    req.session.save((err) => {
+      if (err) console.error('Session save error:', err);
+      passport.authenticate('google', { 
+        scope: ['profile', 'email'],
+        state: true
+      })(req, res, next);
+    });
+  });
 
   app.get('/api/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/auth?error=oauth_failed' }),
