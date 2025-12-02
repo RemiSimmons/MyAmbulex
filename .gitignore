@@ -1,10 +1,20 @@
-node_modules
-dist
-.DS_Store
-server/public
-vite.config.ts.*
-*.tar.gz*.sid
-*cookie*
-*.jar
-*.txt # optional, only if none of your real code uses .txt
+# Node / Next / Vite / Vercel
+node_modules/
+.next/
+dist/
+.vite/
+.vercel/
+
+# Environment files
+.env
+.env.*
+!.env.example   # keep only the template
+
+# Uploads and runtime data
 uploads/
+attached_assets/
+screenshots/
+*.log
+
+# OS cruft
+.DS_Store
