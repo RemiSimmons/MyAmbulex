@@ -53,18 +53,43 @@ export class AdvancedNotificationService {
   }
 
   private setupEmailService(): void {
-    if (process.env.SENDGRID_API_KEY) {
-      this.mailService = new MailService();
-      this.mailService.setApiKey(process.env.SENDGRID_API_KEY);
+    const apiKey = process.env.SENDGRID_API_KEY?.trim();
+    if (apiKey && apiKey !== '' && !apiKey.includes('your_')) {
+      try {
+        this.mailService = new MailService();
+        this.mailService.setApiKey(apiKey);
+        console.log('✅ SendGrid email service initialized');
+      } catch (error) {
+        console.warn('⚠️  Failed to initialize SendGrid:', error);
+      }
+    } else {
+      console.log('ℹ️  SendGrid API key not configured. Email notifications will be disabled.');
     }
   }
 
   private setupSMSService(): void {
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-      this.twilioClient = twilio(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN
-      );
+    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+    
+    if (accountSid && authToken && 
+        accountSid !== '' && authToken !== '' &&
+        !accountSid.includes('your_') && !authToken.includes('your_')) {
+      
+      // Validate Twilio Account SID format (must start with "AC")
+      if (accountSid.startsWith('AC')) {
+        try {
+          this.twilioClient = twilio(accountSid, authToken);
+          console.log('✅ Twilio SMS service initialized');
+        } catch (error) {
+          console.warn('⚠️  Failed to initialize Twilio:', error);
+          console.warn('⚠️  SMS notifications will be disabled.');
+        }
+      } else {
+        console.warn('⚠️  Invalid Twilio Account SID format. Account SID must start with "AC".');
+        console.warn('⚠️  SMS notifications will be disabled.');
+      }
+    } else {
+      console.log('ℹ️  Twilio credentials not configured. SMS notifications will be disabled.');
     }
   }
 

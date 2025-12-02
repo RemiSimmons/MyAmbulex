@@ -163,8 +163,11 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           // SECURITY FIX: Reset cookie policy back to Lax for CSRF protection
           // OAuth needed SameSite=None, but now that auth is complete, restore default security
           if (req.session && req.session.cookie) {
+            const isSecure = req.secure || 
+                             req.headers['x-forwarded-proto'] === 'https' ||
+                             (process.env.NODE_ENV === 'production' && req.protocol === 'https');
             req.session.cookie.sameSite = 'lax';
-            req.session.cookie.secure = process.env.NODE_ENV === 'production';
+            req.session.cookie.secure = isSecure;
             console.log('🔐 OAuth complete - restored default cookie policy (SameSite=Lax)');
           }
           
@@ -189,8 +192,11 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           // SECURITY FIX: Reset cookie policy back to Lax for CSRF protection
           // OAuth needed SameSite=None, but now that auth is complete, restore default security
           if (req.session && req.session.cookie) {
+            const isSecure = req.secure || 
+                             req.headers['x-forwarded-proto'] === 'https' ||
+                             (process.env.NODE_ENV === 'production' && req.protocol === 'https');
             req.session.cookie.sameSite = 'lax';
-            req.session.cookie.secure = process.env.NODE_ENV === 'production';
+            req.session.cookie.secure = isSecure;
             console.log('🔐 OAuth complete - restored default cookie policy (SameSite=Lax)');
           }
           

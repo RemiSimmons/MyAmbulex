@@ -133,91 +133,19 @@ export function AppDownloadSection() {
             </div>
           </div>
 
-          {/* Right side - Phone Mockup */}
+          {/* Right side - Phone Image */}
           <div className="flex justify-center lg:justify-end">
             <div className="relative">
-              {/* Phone Frame */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-[2.5rem] p-2 border-4 border-gray-400 shadow-2xl ring-2 ring-gray-300/50">
-                <div className="bg-white rounded-[2rem] w-64 h-[32rem] lg:w-80 lg:h-[40rem] overflow-hidden relative">
-                  {/* Phone Header */}
-                  <div className="bg-green-600 text-white p-4 text-center">
-                    <h3 className="font-bold text-lg">MyAmbulex App</h3>
-                  </div>
-                  
-                  {/* App Preview Content */}
-                  <div className="p-6 h-full bg-gray-50 flex flex-col">
-                    <div className="text-center mb-6">
-                      <h4 className="text-lg font-semibold text-gray-800 mb-2">App Preview</h4>
-                      <p className="text-sm text-gray-600">Book rides, track drivers, manage appointments</p>
-                    </div>
-                    
-                    {/* Feature Cards */}
-                    <div className="space-y-3 flex-1">
-                      <div className="bg-white rounded-lg p-3 shadow-sm border">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-medium text-gray-800 text-sm leading-tight">Quick Booking</h5>
-                            <p className="text-xs text-gray-600 leading-tight">Request rides instantly</p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-white rounded-lg p-3 shadow-sm border">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                            <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-medium text-gray-800 text-sm leading-tight">Driver Tracking</h5>
-                            <p className="text-xs text-gray-600 leading-tight">Live location updates</p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-white rounded-lg p-3 shadow-sm border">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                            <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-medium text-gray-800 text-sm leading-tight">Transparent Pricing</h5>
-                            <p className="text-xs text-gray-600 leading-tight">Clear Pricing</p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="bg-white rounded-lg p-3 shadow-sm border">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                            <svg className="w-4 h-4 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-medium text-gray-800 text-sm leading-tight">Name Your Price</h5>
-                            <p className="text-xs text-gray-600 leading-tight">Compare driver bids</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Floating App Icon */}
-              <div className="absolute -bottom-4 -right-4 w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center shadow-xl border-4 border-white">
-                <span className="text-white font-bold text-xl">MY</span>
-              </div>
+              <img 
+                src="/app-preview-phone.png" 
+                alt="MyAmbulex App Preview - Book rides, track drivers, manage appointments"
+                className="w-auto h-[32rem] lg:h-[40rem] max-w-full object-contain drop-shadow-2xl"
+                onError={(e) => {
+                  // Fallback if image doesn't exist
+                  console.warn('App preview image not found. Please add app-preview-phone.png to the public folder.');
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
             </div>
           </div>
         </div>

@@ -54,10 +54,24 @@ if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
 
-// Initialize Twilio client if credentials are available
+// Initialize Twilio client if credentials are available and valid
 let twilioClient: twilio.Twilio | null = null;
-if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-  twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+
+if (accountSid && authToken && 
+    accountSid !== '' && authToken !== '' &&
+    !accountSid.includes('your_') && !authToken.includes('your_') &&
+    accountSid.startsWith('AC')) {
+  try {
+    twilioClient = twilio(accountSid, authToken);
+    console.log('✅ Twilio SMS service initialized');
+  } catch (error) {
+    console.warn('⚠️  Failed to initialize Twilio:', error);
+    console.warn('⚠️  SMS notifications will be disabled.');
+  }
+} else if (accountSid || authToken) {
+  console.log('ℹ️  Twilio credentials not properly configured. SMS notifications will be disabled.');
 }
 
 /**

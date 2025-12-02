@@ -147,7 +147,8 @@ export async function setupAuth(app: Express) {
     cookie: {
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       httpOnly: true, // SECURITY FIX: Prevent XSS access to cookies
-      secure: process.env.NODE_ENV === 'production', // SECURITY FIX: HTTPS only in production
+      // secure will be set dynamically based on actual request protocol (handles proxies)
+      secure: false, // Will be set per-request in middleware below
       sameSite: 'lax', // Protect against CSRF while allowing normal navigation
       path: '/',
       domain: undefined, // Let the browser determine the domain
@@ -199,24 +200,34 @@ export async function setupAuth(app: Express) {
   app.use(session(sessionSettings));
   
   // SECURITY FIX: Dual cookie policy - Use SameSite=None only for OAuth flows
+  // Also fix secure flag to work behind proxies (Vercel, etc.)
   app.use((req, res, next) => {
+    // Determine if request is secure (works behind proxies)
+    // Check x-forwarded-proto header (set by proxies) or req.secure
+    const isSecure = req.secure || 
+                     req.headers['x-forwarded-proto'] === 'https' ||
+                     (process.env.NODE_ENV === 'production' && req.protocol === 'https');
+    
     // Check if this is an OAuth route
     const isOAuthRoute = req.path.startsWith('/api/auth/google');
     
     if (isOAuthRoute && req.session && req.session.cookie) {
       // For OAuth, we need SameSite=None to allow cross-site cookies from accounts.google.com
       req.session.cookie.sameSite = 'none';
-      // SECURITY FIX: Only set secure=true in production (requires HTTPS)
-      // In development, cookies can't be sent with secure=true without HTTPS
-      const isProduction = process.env.NODE_ENV === 'production';
-      req.session.cookie.secure = isProduction;
+      // SECURITY FIX: Set secure=true if request is actually HTTPS (works behind proxies)
+      req.session.cookie.secure = isSecure;
       
       console.log('🔐 OAuth route detected - adjusted cookie policy:', {
         path: req.path,
         sameSite: 'none',
-        secure: isProduction,
+        secure: isSecure,
+        protocol: req.protocol,
+        forwardedProto: req.headers['x-forwarded-proto'],
         environment: process.env.NODE_ENV
       });
+    } else if (req.session && req.session.cookie) {
+      // For non-OAuth routes, ensure secure flag is set correctly based on actual protocol
+      req.session.cookie.secure = isSecure;
     }
     // For all other routes, the default Lax policy from sessionSettings applies
     
@@ -309,12 +320,21 @@ export async function setupAuth(app: Express) {
 
   // Google OAuth Strategy (only if credentials are provided)
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    // Construct callback URL for production
+    // Use BASE_URL environment variable if set, otherwise use relative URL
+    // Passport will construct the full URL from the request in that case
+    const callbackURL = process.env.BASE_URL 
+      ? `${process.env.BASE_URL.replace(/\/$/, '')}/api/auth/google/callback`
+      : "/api/auth/google/callback";
+
+    console.log('🔐 Google OAuth configured with callback URL:', callbackURL);
+
     passport.use(
       new GoogleStrategy(
         {
           clientID: process.env.GOOGLE_CLIENT_ID,
           clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          callbackURL: "/api/auth/google/callback",
+          callbackURL: callbackURL,
           state: true, // Enable CSRF protection
         },
         async (accessToken, refreshToken, profile, done) => {
