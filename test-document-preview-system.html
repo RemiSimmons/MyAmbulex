@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Preview System Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .results { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 3px; max-height: 400px; overflow-y: auto; }
+        .endpoint { font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 3px; }
+        .preview-container { border: 1px solid #ddd; border-radius: 5px; margin: 10px 0; }
+        .preview-header { padding: 10px; background: #f5f5f5; border-bottom: 1px solid #ddd; font-weight: bold; }
+        .preview-content { padding: 10px; max-height: 300px; overflow: auto; }
+        .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>MyAmbulex Document Preview System Test</h1>
+    
+    <div class="test-section">
+        <h2>Preview System Overview</h2>
+        <div class="feature-grid">
+            <div>
+                <h3>✅ Supported Features:</h3>
+                <ul>
+                    <li>Image preview (JPEG, PNG, GIF, WebP)</li>
+                    <li>PDF document viewing</li>
+                    <li>Text file preview</li>
+                    <li>Inline viewing with proper headers</li>
+                    <li>Role-based access control</li>
+                    <li>Preview metadata API</li>
+                    <li>Fallback for unsupported types</li>
+                </ul>
+            </div>
+            <div>
+                <h3>📋 Technical Implementation:</h3>
+                <ul>
+                    <li>Separate preview endpoint from download</li>
+                    <li>Content-Disposition: inline for browser viewing</li>
+                    <li>MIME type validation and security headers</li>
+                    <li>Caching for performance (1 hour)</li>
+                    <li>Error handling and audit logging</li>
+                    <li>React component with dialog modal</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 1: User Authentication</h2>
+        <form id="loginForm">
+            <label>Username: <input type="text" id="username" value="testdriver"></label><br>
+            <label>Password: <input type="password" id="password" value="password123"></label><br>
+            <button type="submit">Login</button>
+        </form>
+        <div id="loginResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Document Discovery</h2>
+        <div style="display: none;" id="discoverySection">
+            <button id="findDocumentsBtn">Find Documents for Preview</button>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/documents/my-documents</span></div>
+        <div id="discoveryResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Preview Info Testing</h2>
+        <div style="display: none;" id="previewInfoSection">
+            <div id="previewInfoDocuments"></div>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/documents/:id/preview-info</span></div>
+        <div id="previewInfoResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Live Preview Testing</h2>
+        <div style="display: none;" id="livePreviewSection">
+            <div id="livePreviewDocuments"></div>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/documents/:id/preview</span></div>
+        <div id="livePreviewResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 5: File Type Support Matrix</h2>
+        <div id="supportMatrix" class="results">
+            <table border="1" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 8px;">File Type</th>
+                        <th style="padding: 8px;">MIME Type</th>
+                        <th style="padding: 8px;">Preview Method</th>
+                        <th style="padding: 8px;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 8px;">JPEG Images</td>
+                        <td style="padding: 8px;">image/jpeg</td>
+                        <td style="padding: 8px;">Direct &lt;img&gt; tag</td>
+                        <td style="padding: 8px;" class="success">✓ Supported</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;">PNG Images</td>
+                        <td style="padding: 8px;">image/png</td>
+                        <td style="padding: 8px;">Direct &lt;img&gt; tag</td>
+                        <td style="padding: 8px;" class="success">✓ Supported</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;">PDF Documents</td>
+                        <td style="padding: 8px;">application/pdf</td>
+                        <td style="padding: 8px;">Embedded &lt;iframe&gt;</td>
+                        <td style="padding: 8px;" class="success">✓ Supported</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;">Text Files</td>
+                        <td style="padding: 8px;">text/plain</td>
+                        <td style="padding: 8px;">Embedded &lt;iframe&gt;</td>
+                        <td style="padding: 8px;" class="success">✓ Supported</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;">Word Documents</td>
+                        <td style="padding: 8px;">application/msword</td>
+                        <td style="padding: 8px;">N/A</td>
+                        <td style="padding: 8px;" class="error">✗ Not Supported</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let isLoggedIn = false;
+        let availableDocuments = [];
+
+        // Login functionality
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                const resultDiv = document.getElementById('loginResult');
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Login successful!</span><br><span class="info">Welcome, ${result.user.firstName} ${result.user.lastName} (${result.user.role})</span>`;
+                    isLoggedIn = true;
+                    enablePreviewTests();
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Login failed: ${result.message}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        function enablePreviewTests() {
+            document.getElementById('discoverySection').style.display = 'block';
+            document.getElementById('previewInfoSection').style.display = 'block';
+            document.getElementById('livePreviewSection').style.display = 'block';
+        }
+
+        // Document discovery
+        document.getElementById('findDocumentsBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/documents/my-documents', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('discoveryResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    availableDocuments = data.documents;
+                    
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Found ${data.documents.length} documents!</span><br>
+                        <strong>Documents available for preview testing:</strong><br>
+                        <pre>${JSON.stringify(data.documents.map(d => ({
+                            id: d.id,
+                            filename: d.filename,
+                            type: d.type,
+                            mimeType: 'Will be checked in preview-info'
+                        })), null, 2)}</pre>
+                    `;
+                    
+                    populatePreviewTests(data.documents);
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('discoveryResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        function populatePreviewTests(documents) {
+            // Preview info tests
+            const infoContainer = document.getElementById('previewInfoDocuments');
+            if (documents.length === 0) {
+                infoContainer.innerHTML = '<div class="info">No documents available for testing</div>';
+            } else {
+                infoContainer.innerHTML = documents.map(doc => `
+                    <button onclick="testPreviewInfo(${doc.id}, '${doc.filename}')" class="info-btn">
+                        Test Preview Info: ${doc.filename}
+                    </button>
+                `).join('<br>');
+            }
+
+            // Live preview tests
+            const previewContainer = document.getElementById('livePreviewDocuments');
+            if (documents.length === 0) {
+                previewContainer.innerHTML = '<div class="info">No documents available for testing</div>';
+            } else {
+                previewContainer.innerHTML = documents.map(doc => `
+                    <button onclick="testLivePreview(${doc.id}, '${doc.filename}')" class="preview-btn">
+                        Test Live Preview: ${doc.filename}
+                    </button>
+                `).join('<br>');
+            }
+        }
+
+        // Test preview info
+        async function testPreviewInfo(documentId, filename) {
+            try {
+                const response = await fetch(`/api/documents/${documentId}/preview-info`, {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('previewInfoResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const preview = data.preview;
+                    
+                    resultDiv.innerHTML = `
+                        <div class="preview-container">
+                            <div class="preview-header">Preview Info: ${filename}</div>
+                            <div class="preview-content">
+                                <strong>File:</strong> ${preview.filename}<br>
+                                <strong>MIME Type:</strong> ${preview.mimeType}<br>
+                                <strong>Size:</strong> ${preview.fileSize} bytes<br>
+                                <strong>Previewable:</strong> ${preview.isPreviewable ? '<span class="success">✓ Yes</span>' : '<span class="error">✗ No</span>'}<br>
+                                <strong>Preview Type:</strong> ${preview.previewType}<br>
+                                <strong>Preview URL:</strong> ${preview.previewUrl || 'N/A'}<br>
+                                <strong>Supported Types:</strong> ${preview.supportedTypes.join(', ')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Preview info failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('previewInfoResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        // Test live preview
+        async function testLivePreview(documentId, filename) {
+            try {
+                // First get preview info
+                const infoResponse = await fetch(`/api/documents/${documentId}/preview-info`, {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('livePreviewResult');
+                
+                if (!infoResponse.ok) {
+                    resultDiv.innerHTML = '<span class="error">❌ Could not get preview info</span>';
+                    return;
+                }
+                
+                const infoData = await infoResponse.json();
+                const preview = infoData.preview;
+                
+                if (!preview.isPreviewable) {
+                    resultDiv.innerHTML = `
+                        <div class="preview-container">
+                            <div class="preview-header">Preview Test: ${filename}</div>
+                            <div class="preview-content">
+                                <span class="warning">⚠ File type ${preview.mimeType} is not previewable</span><br>
+                                This is expected behavior for unsupported file types.
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Test the actual preview endpoint
+                const previewResponse = await fetch(`/api/documents/${documentId}/preview`, {
+                    credentials: 'include'
+                });
+                
+                if (previewResponse.ok) {
+                    let previewContent = '';
+                    
+                    if (preview.previewType === 'image') {
+                        previewContent = `<img src="/api/documents/${documentId}/preview" style="max-width: 100%; max-height: 200px;" alt="${filename}">`;
+                    } else if (preview.previewType === 'pdf') {
+                        previewContent = `<iframe src="/api/documents/${documentId}/preview" style="width: 100%; height: 200px; border: 1px solid #ddd;"></iframe>`;
+                    } else if (preview.previewType === 'text') {
+                        previewContent = `<iframe src="/api/documents/${documentId}/preview" style="width: 100%; height: 200px; border: 1px solid #ddd;"></iframe>`;
+                    }
+                    
+                    resultDiv.innerHTML = `
+                        <div class="preview-container">
+                            <div class="preview-header">✅ Live Preview: ${filename} (${preview.previewType})</div>
+                            <div class="preview-content">
+                                ${previewContent}
+                                <br><small>Preview loaded successfully via ${preview.previewUrl}</small>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const error = await previewResponse.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Live preview failed: ${error.error}</span>`;
+                }
+                
+            } catch (error) {
+                document.getElementById('livePreviewResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        // Auto-check authentication status
+        window.addEventListener('load', () => {
+            fetch('/api/user', { credentials: 'include' })
+                .then(response => {
+                    if (response.status === 401) {
+                        document.getElementById('discoveryResult').innerHTML = '<span class="info">🔒 Please login to test preview features</span>';
+                    }
+                });
+        });
+    </script>
+</body>
+</html>

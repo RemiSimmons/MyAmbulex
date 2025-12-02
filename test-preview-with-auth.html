@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Preview Testing</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .results { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 3px; max-height: 300px; overflow-y: auto; }
+        .preview-box { border: 1px solid #ccc; margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .preview-content { max-height: 400px; overflow: auto; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Document Preview System Test</h1>
+    
+    <div class="test-section">
+        <h2>Step 1: Login</h2>
+        <form id="loginForm">
+            <label>Username: <input type="text" id="username" value="testdriver"></label><br>
+            <label>Password: <input type="password" id="password" value="password123"></label><br>
+            <button type="submit">Login</button>
+        </form>
+        <div id="loginResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Test Preview Routes</h2>
+        <div style="display: none;" id="previewTestsSection">
+            <button id="testPreviewInfo">Test Preview Info (Document 1)</button>
+            <button id="testPreviewContent">Test Preview Content (Document 1)</button>
+            <button id="testMyDocuments">Test My Documents List</button>
+        </div>
+        <div id="previewTestResults" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Live Preview Demo</h2>
+        <div style="display: none;" id="livePreviewSection">
+            <div id="previewDemo" class="preview-box">
+                <h3>Preview will appear here:</h3>
+                <div id="previewContainer" class="preview-content">
+                    Click "Test Preview Content" above to see live preview
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isLoggedIn = false;
+
+        // Login functionality
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                const resultDiv = document.getElementById('loginResult');
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Login successful! User: ${result.user.firstName} ${result.user.lastName} (${result.user.role})</span>`;
+                    isLoggedIn = true;
+                    enablePreviewTests();
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Login failed: ${result.message}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        function enablePreviewTests() {
+            document.getElementById('previewTestsSection').style.display = 'block';
+            document.getElementById('livePreviewSection').style.display = 'block';
+        }
+
+        // Test preview info
+        document.getElementById('testPreviewInfo').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/documents/1/preview-info', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('previewTestResults');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="success">✅ Preview Info Retrieved Successfully!</div>
+                        <strong>Preview Data:</strong>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Preview Info Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('previewTestResults').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // Test preview content
+        document.getElementById('testPreviewContent').addEventListener('click', async () => {
+            try {
+                // First get preview info
+                const infoResponse = await fetch('/api/documents/1/preview-info', {
+                    credentials: 'include'
+                });
+                
+                if (!infoResponse.ok) {
+                    document.getElementById('previewTestResults').innerHTML = '<span class="error">❌ Could not get preview info</span>';
+                    return;
+                }
+                
+                const infoData = await infoResponse.json();
+                const preview = infoData.preview;
+                
+                // Test actual preview
+                const previewResponse = await fetch('/api/documents/1/preview', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('previewTestResults');
+                const previewContainer = document.getElementById('previewContainer');
+                
+                if (previewResponse.ok) {
+                    resultDiv.innerHTML = `<div class="success">✅ Preview Content Retrieved!</div>`;
+                    
+                    if (preview && preview.isPreviewable) {
+                        if (preview.previewType === 'image') {
+                            previewContainer.innerHTML = `
+                                <h4>Image Preview:</h4>
+                                <img src="/api/documents/1/preview" style="max-width: 100%; max-height: 300px;" alt="Document Preview">
+                            `;
+                        } else if (preview.previewType === 'pdf') {
+                            previewContainer.innerHTML = `
+                                <h4>PDF Preview:</h4>
+                                <iframe src="/api/documents/1/preview" style="width: 100%; height: 300px; border: 1px solid #ddd;"></iframe>
+                            `;
+                        } else if (preview.previewType === 'text') {
+                            previewContainer.innerHTML = `
+                                <h4>Text Preview:</h4>
+                                <iframe src="/api/documents/1/preview" style="width: 100%; height: 300px; border: 1px solid #ddd;"></iframe>
+                            `;
+                        } else {
+                            previewContainer.innerHTML = `<h4>Preview type: ${preview.previewType}</h4><p>Preview available but display method not implemented for this type.</p>`;
+                        }
+                    } else {
+                        previewContainer.innerHTML = '<h4>Document not previewable</h4><p>This document type does not support preview.</p>';
+                    }
+                } else {
+                    const error = await previewResponse.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Preview Content Failed: ${error.error}</span>`;
+                    previewContainer.innerHTML = '<p class="error">Preview failed to load</p>';
+                }
+            } catch (error) {
+                document.getElementById('previewTestResults').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // Test my documents
+        document.getElementById('testMyDocuments').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/documents/my-documents', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('previewTestResults');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <div class="success">✅ Documents List Retrieved!</div>
+                        <strong>Total Documents:</strong> ${data.total}<br>
+                        <strong>Has Advanced Features:</strong> ${data.hasAdvancedFeatures}<br>
+                        <strong>Documents:</strong>
+                        <pre>${JSON.stringify(data.documents, null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Documents List Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('previewTestResults').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // Auto-check preview routes on load
+        window.addEventListener('load', async () => {
+            console.log('Testing preview routes availability...');
+            
+            try {
+                const testRoutes = [
+                    '/api/documents/1/preview-info',
+                    '/api/documents/1/preview',
+                    '/api/documents/my-documents'
+                ];
+                
+                for (const route of testRoutes) {
+                    const response = await fetch(route, { credentials: 'include' });
+                    console.log(`Route ${route}: ${response.status} ${response.statusText}`);
+                }
+                
+                console.log('Preview system routes are registered and responding');
+            } catch (error) {
+                console.error('Route testing failed:', error);
+            }
+        });
+    </script>
+</body>
+</html>

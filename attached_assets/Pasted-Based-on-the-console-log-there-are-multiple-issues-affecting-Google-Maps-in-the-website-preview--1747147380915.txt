@@ -1,0 +1,45 @@
+Based on the console log, there are multiple issues affecting Google Maps in the website preview:
+
+## Main Errors Causing Flickering
+
+1. **Multiple Google Maps API Inclusions**:
+   - The warning "You have included the Google Maps JavaScript API multiple times on this page" indicates duplicate script inclusions, which can cause conflicts and flickering.
+
+2. **Element Definition Conflicts**:
+   - Multiple warnings about elements already being defined (e.g., "gmp-map" already defined)
+   - This suggests the Google Maps components are being initialized multiple times
+
+3. **Directions API Failures**:
+   - Repeated errors "Directions request failed with status: ZERO_RESULTS"
+   - These continuous failed requests could trigger UI refreshes causing flickering
+
+4. **Deprecated API Usage**:
+   - The application is using several deprecated Google Maps services (PlacesService, AutocompleteService, Marker)
+   - Deprecated APIs may have performance or compatibility issues
+
+## Suggested Fixes
+
+1. **Remove Duplicate API Inclusions**:
+   - Ensure the Google Maps API script is included only once in the application
+   - Look for multiple `<script>` tags loading the Maps API or components loading it separately
+
+2. **Implement Proper Async Loading**:
+   - Follow Google's recommended loading patterns (referenced in the warning with link to goo.gl/js-api-loading)
+   - Use a single async loader with proper callback handling
+
+3. **Address the Directions API Issues**:
+   - The repeated "ZERO_RESULTS" suggests invalid route requests or destination coordinates
+   - Verify that valid addresses/coordinates are being used for directions requests
+   - Implement proper error handling to prevent continuous failed requests
+
+4. **Update to Modern Google Maps APIs**:
+   - Migrate from deprecated services to recommended ones as indicated in the warnings:
+     - Use google.maps.places.Place instead of PlacesService
+     - Use google.maps.places.AutocompleteSuggestion instead of AutocompleteService
+     - Use google.maps.marker.AdvancedMarkerElement instead of Marker
+
+5. **Check API Key and Billing**:
+   - Ensure the project has proper API key configuration and billing setup
+   - This might be related to the ReferrerNotAllowedMapError from your previous screenshot
+
+The flickering is most likely caused by the combination of duplicate API inclusions and the continuous failed directions requests triggering rendering cycles.

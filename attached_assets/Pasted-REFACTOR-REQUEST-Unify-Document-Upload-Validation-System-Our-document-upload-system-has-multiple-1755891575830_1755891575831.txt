@@ -1,0 +1,50 @@
+REFACTOR REQUEST: Unify Document Upload & Validation System
+
+Our document upload system has multiple validation approaches causing conflicts and failures. Instead of fixing individual bugs, please refactor to create a unified, reliable system.
+
+CURRENT PROBLEMS:
+- 3 different validation methods with conflicting rules
+- FormData corruption through apiRequest wrapper
+- Inconsistent error handling across components
+- Multiple upload approaches (fetch vs apiRequest)
+- MIME type mismatches between frontend/backend
+
+REFACTORING GOALS:
+
+1. **Single Source of Truth for Validation**
+   - Create ONE validation service used by frontend AND backend
+   - Consistent file type, size, and content validation rules
+   - Shared validation logic between all upload components
+
+2. **Unified Upload Flow**
+   - Standardize all upload components to use same approach
+   - Remove apiRequest wrapper for file uploads (use fetch directly)
+   - Consistent error handling and user feedback
+   - Unified loading states and progress indication
+
+3. **Clean Architecture**
+   - Separate validation logic from upload logic
+   - Clear data flow: Validate → Upload → Store → Update UI
+   - Consistent document type mapping throughout system
+   - Proper TypeScript interfaces that match actual data
+
+4. **Better User Experience**
+   - Immediate client-side validation before upload attempt
+   - Clear, specific error messages (not generic "upload failed")
+   - Consistent UI patterns across all upload components
+
+SUGGESTED APPROACH:
+1. Create shared validation utility (client + server compatible)
+2. Create unified upload service (handles FormData properly)
+3. Refactor all upload components to use unified services
+4. Update TypeScript interfaces to match actual implementation
+5. Implement proper error translation system
+
+FILES TO REFACTOR:
+- All upload components (verification-section.tsx, document-upload-with-validation.tsx, etc.)
+- Server upload route (upload.ts)
+- Validation logic (requirements.ts)
+- apiRequest utility
+- TypeScript interfaces
+
+PRIORITY: Focus on creating clean, maintainable code rather than quick fixes. This system needs to be reliable for production use.

@@ -1,0 +1,59 @@
+Build a responsive HTML/CSS landing page for the beta launch of MyAmbulex.com, a new direct-to-consumer medical transportation platform. The page should include:
+
+1. **Headline Section (Hero):**
+   - Headline: "Join Atlanta's Medical Transport Revolution – No More Brokers"
+   - Subheadline: "Fully functional app. Ready for rides within 7 days."
+   - Call-to-action buttons: 
+     - [Apply as Founding Driver] 
+     - [Request Early Access as Rider]
+   - Emphasize limited beta spots, with urgency.
+
+2. **Founding Member Value Section:**
+   - Title: "Founding Member Perks"
+   - List benefits for early signups:
+     - Lifetime access to premium features
+     - Priority trip matching
+     - Direct input into future platform development
+     - Zero platform fees during beta
+   - Add a visual badge or icon that says "Founding Member"
+
+3. **Driver-Specific Benefits:**
+   - Title: "Keep More of What You Earn"
+   - Bullet Points:
+     - Choose your rides and set your availability
+     - Weekly payouts, transparent pricing
+     - Get approved in 7 days or less
+     - No middlemen or dispatch delays
+
+4. **Rider Value Proposition:**
+   - Title: "Reliable Medical Rides, On Your Terms"
+   - Bullet Points:
+     - Book in minutes, track rides, get notifications
+     - Pre-vetted drivers, HIPAA-aware design
+     - Ride history and feedback system
+
+5. **Trust & Safety Section (High Priority - 8/10):**
+   - Title: "Trust Comes Standard"
+   - Content:
+     - Our team includes both riders and drivers — we understand both sides.
+     - Every provider is licensed, insured, and vetted.
+     - Active safety protocols and rider protections in place.
+     - Secure document upload and identity verification.
+
+6. **Beta Application Section:**
+   - Title: "Apply Now – Limited Beta Spots"
+   - Subheadline: "Help shape the future of NEMT in Atlanta"
+   - Email form or link to external form (placeholder)
+   - Trust message: “We’ll review your application and respond within 48 hours.”
+
+7. **Launch Timing Section:**
+   - Highlight: "Go Live in 7 Days"
+   - Subtext: “Get fully approved and ready to take rides or book transport within one week.”
+
+8. **Footer:**
+   - Basic nav: Terms, Privacy, Contact
+   - Email input for updates
+   - Short brand statement: “MyAmbulex – Built by the people who use it.”
+
+Use clean, modern styling with neutral tones and medical-accessibility-friendly fonts. Prioritize clarity and mobile responsiveness. No JavaScript required unless form functionality is included.
+

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Agreements Demo - MyAmbulex</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0891b2;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 20px;
+            border-left: 4px solid #0891b2;
+            background: #f8f9fa;
+            border-radius: 0 8px 8px 0;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #0891b2;
+        }
+        .button {
+            background: #0891b2;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 10px 10px 10px 0;
+        }
+        .button:hover {
+            background: #0e7490;
+        }
+        .error-demo {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success-demo {
+            background: #d1fae5;
+            border: 1px solid #a7f3d0;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 MyAmbulex Legal Agreements System</h1>
+        
+        <p>This demonstration shows how the legal agreements system works to ensure all users sign required documents before using the platform.</p>
+
+        <div class="step">
+            <h3>📋 Step 1: Legal Documents Available</h3>
+            <p>Users can access and download the required legal documents:</p>
+            <a href="/api/legal/download/platform-user-agreement" class="button" target="_blank">
+                📄 Platform User Agreement
+            </a>
+            <a href="/api/legal/download/privacy-policy" class="button" target="_blank">
+                🔒 Privacy Policy
+            </a>
+            <div class="success-demo">
+                ✅ <strong>Success:</strong> Legal documents are now properly served using authentic uploaded PDFs from the platform.
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>🚫 Step 2: Ride Booking Blocked</h3>
+            <p>When users try to book a ride without signing legal agreements, they receive a clear error message:</p>
+            <div class="error-demo">
+                ❌ <strong>Legal Agreements Required:</strong> You must sign all required legal agreements before using this feature.
+                <br><br>
+                <span style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 3px; font-size: 12px;">
+                    Code: LEGAL_AGREEMENTS_REQUIRED
+                </span>
+            </div>
+            <p>The error includes a helpful button that redirects users to sign the agreements.</p>
+        </div>
+
+        <div class="step">
+            <h3>📝 Step 3: Legal Agreements Interface</h3>
+            <p>Users are directed to a comprehensive legal agreements page where they can:</p>
+            <ul>
+                <li>View all required legal documents</li>
+                <li>Download and read each document</li>
+                <li>Sign agreements with electronic signature capture</li>
+                <li>Track their completion status</li>
+            </ul>
+            <a href="/legal/agreements" class="button">
+                📋 Go to Legal Agreements Page
+            </a>
+            <p><em>Note: You need to be logged in to access this page.</em></p>
+        </div>
+
+        <div class="step">
+            <h3>✅ Step 4: Access Granted</h3>
+            <p>After signing all required agreements, users can:</p>
+            <ul>
+                <li>Book rides without restrictions</li>
+                <li>Access all platform features</li>
+                <li>View their signed agreement history</li>
+            </ul>
+            <div class="success-demo">
+                ✅ <strong>Complete System Integration:</strong> Legal agreements are now enforced across all ride booking flows and platform features.
+            </div>
+        </div>
+
+        <div class="step">
+            <h3>🔧 Technical Implementation</h3>
+            <p>The system includes:</p>
+            <ul>
+                <li><strong>Middleware Enforcement:</strong> All protected routes check legal agreement status</li>
+                <li><strong>Database Tracking:</strong> Signed agreements stored with timestamps and user details</li>
+                <li><strong>Document Management:</strong> Authentic uploaded PDFs served securely</li>
+                <li><strong>Error Handling:</strong> Clear user guidance with action buttons</li>
+                <li><strong>Status Tracking:</strong> Real-time completion status monitoring</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>🧪 Testing Instructions</h3>
+            <p>To test the complete workflow:</p>
+            <ol>
+                <li>Register a new user account or log in as an existing user</li>
+                <li>Try to book a ride (you'll get the legal agreements error)</li>
+                <li>Click the "Sign Agreements" button in the error message</li>
+                <li>Complete the legal agreements process</li>
+                <li>Return to book a ride (should work normally)</li>
+            </ol>
+            <a href="/auth" class="button">
+                🔐 Login/Register
+            </a>
+            <a href="/rider/book-ride" class="button">
+                🚗 Book a Ride
+            </a>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p><strong>Legal agreements system is ready for beta testing! 🎉</strong></p>
+            <p style="color: #6b7280; font-size: 14px;">
+                All users must sign the Platform User Agreement and Privacy Policy before accessing platform features.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

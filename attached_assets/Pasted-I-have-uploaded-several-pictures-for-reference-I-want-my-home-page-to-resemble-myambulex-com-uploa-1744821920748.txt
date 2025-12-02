@@ -1,0 +1,807 @@
+I have uploaded several pictures for reference. I want my home page to resemble myambulex.com (uploaded screenshot). Below you will find my PRD. 
+
+MyAmbulex PRD
+
+
+# Product Requirements Document: MyAmbulex RideShare Bidding Platform
+
+## Executive Summary
+
+MyAmbulex is a comprehensive Non-Emergency Medical Transportation (NEMT) platform that connects riders and drivers through an innovative bidding marketplace model. Unlike traditional fixed-price NEMT services, MyAmbulex introduces a dynamic bidding system that enables drivers to bid on ride requests, creating price flexibility and transparency that benefits all parties. The platform serves various user groups including patients, healthcare facilities, and transportation providers with specific focus on medical transportation needs.
+
+## 1. Product Vision & Strategy
+
+### 1.1 Vision Statement
+To revolutionize the Non-Emergency Medical Transportation industry by creating an accessible, transparent, and efficient bidding marketplace that connects riders and drivers while focusing on affordability, reliability, and quality of service.
+
+### 1.2 Business Objectives
+- **Transform NEMT access**: Create a platform that improves healthcare access through reliable transportation
+- **Create price transparency**: Implement a bidding system that allows market dynamics to determine optimal pricing
+- **Improve efficiency**: Reduce wait times and enhance resource utilization through smart routing and real-time tracking
+- **Build trust**: Enable ratings, verification, and communication tools to ensure service quality and safety
+- **Drive adoption**: Achieve rapid growth through an intuitive experience for both riders and drivers
+
+### 1.3 Target Market
+- **Riders**: Patients who need transportation to medical appointments, including elderly, disabled, and those recovering from procedures
+- **Drivers**: Independent transportation providers, specialized NEMT operators, and fleet managers
+- **Healthcare providers**: Hospitals, clinics, and care facilities that arrange transportation for patients
+- **Insurance and payers**: Medicaid, Medicare, and private insurers who cover NEMT services
+
+## 2. User Requirements
+
+### 2.1 User Roles & Personas
+
+#### 2.1.1 Rider
+- **Needs**: Reliable transportation to medical appointments, clear pricing, accessibility features, safety assurances
+- **Goals**: Easy booking, affordable costs, comfort during transport, on-time arrival
+- **Pain points**: Unpredictable pricing, long wait times, unqualified drivers, difficult booking processes
+
+#### 2.1.2 Driver
+- **Needs**: Steady stream of ride opportunities, fair compensation, clear trip information
+- **Goals**: Maximize earnings, create flexible schedules, minimize downtime between rides
+- **Pain points**: Fixed low pricing, inefficient routing, unpredictable demand, high platform fees
+
+#### 2.1.3 Administrator
+- **Needs**: Platform oversight, analytics, user management, dispute resolution tools
+- **Goals**: Ensure platform compliance, optimize operations, maintain quality standards
+- **Pain points**: Limited visibility into operations, complex dispute resolution, manual verification processes
+
+### 2.2 User Stories
+
+#### Rider Stories
+1. As a rider, I want to request a ride with specific requirements so drivers can provide accurate bids.
+2. As a rider, I want to see driver credentials and ratings before accepting a bid.
+3. As a rider, I want to bid on my own ride to negotiate a fair price with drivers.
+4. As a rider, I want to save favorite locations so I can quickly book recurring medical appointments.
+5. As a rider, I want to track my driver's location in real-time to know when they'll arrive.
+6. As a rider, I want to communicate directly with my driver to coordinate pickup details.
+7. As a rider, I want to filter drivers by vehicle type, rating, and preferences to meet my specific needs.
+8. As a rider, I want to schedule rides in advance for upcoming appointments.
+9. As a rider, I want clear fare breakdowns so I understand what I'm paying for.
+10. As a rider, I want to receive notifications about bid updates and ride status changes.
+11. As a rider, I want to specify accessibility requirements such as stairs and ramps at my pickup and dropoff locations.
+
+#### Driver Stories
+1. As a driver, I want to view available ride requests in my area to bid on opportunities.
+2. As a driver, I want to set my own pricing through bids to reflect my services and availability.
+3. As a driver, I want to counter-offer to riders' bids to negotiate fair compensation.
+4. As a driver, I want to view a rider's medical needs and requirements before accepting a job.
+5. As a driver, I want optimized routing suggestions to efficiently complete multiple rides.
+6. As a driver, I want to track my earnings and performance metrics to improve my service.
+7. As a driver, I want to receive timely notifications about new ride requests and bid responses.
+8. As a driver, I want to communicate directly with riders to coordinate pickup details.
+9. As a driver, I want to set my availability schedule to manage my working hours.
+10. As a driver, I want a streamlined document upload process for credential verification.
+11. As a driver, I want to set my service area to receive ride requests within my preferred radius.
+12. As a driver, I want to know about accessibility requirements before accepting a ride.
+
+## 3. Feature Requirements
+
+### 3.1 Authentication & User Management
+
+#### 3.1.1 Multi-Role User System
+- Distinct registration flows for riders, drivers, and administrators
+- Role-specific profile requirements and information collection
+- Access controls based on user roles and permissions
+- Authentication via email/password or social login options
+- Two-factor authentication for enhanced security
+
+#### 3.1.2 Profile Management
+- Comprehensive user profiles with personal details (name, contact info, profile picture)
+- Notification preferences (email, SMS, in-app)
+- Language and accessibility preferences
+- Payment method management for riders
+- Service preferences and saved locations
+
+#### 3.1.3 Driver Verification System
+- Document upload and verification:
+  - Driver's license
+  - Vehicle registration
+  - Insurance documentation
+  - Specialized certifications for medical transport
+- Background check integration
+- Vehicle information management:
+  - Vehicle type (standard, wheelchair accessible, stretcher)
+  - Make, model, year, color
+  - License plate
+  - Special equipment
+- Vehicle photo requirements:
+  - Front view of vehicle showing make/model
+  - Side view showing any accessibility features
+  - Clear photo of license plate (blurred in public-facing areas)
+  - Interior photos showing wheelchair securing mechanisms (if applicable)
+  - Safety equipment and seating configuration
+- Image quality verification to ensure photos are clear and usable
+- Administrator review and approval before driver account activation
+
+#### 3.1.4 Legal Agreements
+- Driver Non-Compete Agreement:
+  - Non-solicitation clause for customers introduced through the platform
+  - Prohibition on using platform-derived information for competing purposes
+  - Geographic limitations (25-mile radius from driver's home base)
+  - Duration of obligations (6 months after termination)
+  - Consequences for violations
+- Acceptance tracking with digital signature
+- Date, time, and IP address logging for legal verification
+- Access to agreement terms in driver account settings
+
+### 3.2 Ride Booking System
+
+#### 3.2.1 Location Selection
+- Interactive booking form with pickup and drop-off locations
+- Google Maps integration with address autocomplete
+- Saved locations management for frequent destinations
+- Location history for previous rides
+- Point-of-interest search (hospitals, clinics, pharmacies)
+
+#### 3.2.2 Route Visualization
+- Map display showing route between pickup and drop-off
+- Distance and estimated time calculation
+- Alternative route options when applicable
+- Real-time traffic considerations
+- Accessibility information for locations
+
+#### 3.2.3 Ride Type Selection
+- Vehicle type options:
+  - Standard (ambulatory)
+  - Wheelchair accessible
+  - Stretcher
+- Service add-ons:
+  - Companion assistance
+  - Stair chair
+  - Wait time requirements
+  - Additional stops
+
+#### 3.2.4 Scheduling Options
+- Immediate booking functionality (ASAP rides)
+- Scheduled future bookings with date and time selection
+- Recurring ride setup with frequency settings
+- Round-trip booking option
+- Multi-leg journey planning
+
+#### 3.2.5 Location Accessibility Details
+- Stairs information for pickup and dropoff locations:
+  - No stairs
+  - 1-3 steps
+  - 4-10 steps
+  - 11+ steps
+  - Full flight of stairs
+- Ramp requirements:
+  - Ramp needed at pickup
+  - Ramp needed at dropoff
+  - Location has existing ramp
+- Additional notes section for special location instructions:
+  - 200-300 character limit
+  - Placeholders with examples (e.g., "Enter through side door")
+  - Building access information
+  - Special handling instructions
+- Visual indicators showing accessibility requirements in ride details
+
+### 3.3 Bidding System
+
+#### 3.3.1 Bid Placement Interface
+- Riders initiate ride requests with requirements
+- Drivers view available requests in their area
+- Bid amount input with suggested pricing
+- Optional message field with bid submission
+- Bid templates for frequent offerings
+
+#### 3.3.2 Bid Management
+- Status tracking for all placed bids
+- Counter-offer functionality for negotiation
+- Bid acceptance/rejection mechanism
+- Bid expiration system with countdown timers
+- Bid history and analytics
+
+#### 3.3.3 Pricing Algorithm
+- Smart pricing suggestions based on:
+  - Distance and estimated time
+  - Vehicle type and special requirements
+  - Time of day (standard hours vs. after-hours)
+  - Historical pricing data
+  - Current demand patterns
+- Transparent fare breakdown:
+  - Base fare
+  - Mileage rate
+  - Wait time
+  - Service add-ons
+  - Platform fee
+
+#### 3.3.4 Bid Notifications
+- Real-time alerts for new bids
+- Push notifications for bid updates
+- Email and SMS notifications for important activities
+- In-app messaging for bid clarification
+- Notification preferences management
+
+### 3.4 Dashboard Experience
+
+#### 3.4.1 Rider Dashboard
+- Current and upcoming rides display
+- Pending and active bids status
+- Ride history with details and receipts
+- Saved locations management
+- Payment method management
+- Quick actions for common tasks
+
+#### 3.4.2 Driver Dashboard
+- Available ride requests in the area
+- Active and upcoming rides
+- Bidding history and success rate
+- Earnings summary and analytics
+- Vehicle and document status
+- Availability schedule management
+
+#### 3.4.3 Administrator Dashboard
+- Platform metrics and analytics
+- User management tools
+- Dispute resolution interface
+- Document verification queue
+- System health monitoring
+- Configuration settings
+
+#### 3.4.4 Service Area Configuration
+- Home base location setting
+- Service radius configuration:
+  - Default: 25 miles from home base
+  - Adjustable range: 15-35 miles
+- Visual map representation of service area
+- Service hours configuration:
+  - Time windows for each day of the week
+  - Availability toggles for quick temporary changes
+- Geofencing to only show ride requests within configured service area
+- Analytics on service area coverage and demand
+
+### 3.5 Payment Processing
+
+#### 3.5.1 Payment Methods
+- Credit/debit card integration via Stripe
+- Digital wallet support
+- Payment method management
+- Payment security measures
+- Tax documentation
+
+#### 3.5.2 Fare Management
+- Transparent fare calculation
+- Itemized receipt generation
+- Late cancellation fees
+- No-show policies
+- Refund processing
+- Tipping functionality
+
+#### 3.5.3 Driver Earnings
+- Automatic payment processing
+- Earnings summary and reports
+- Payment schedule options
+- Tax information
+- Performance-based incentives
+
+### 3.6 Communication Features
+
+#### 3.6.1 In-app Messaging
+- Real-time chat between matched riders and drivers
+- Message history preservation
+- Pre-written message templates
+- File and photo sharing capability
+- Translation services for multilingual support
+
+#### 3.6.2 Notifications System
+- Ride status updates
+- Bid notifications
+- System alerts
+- Push notifications
+- Email notifications
+- SMS notifications
+- Customizable notification preferences
+
+#### 3.6.3 Safety Features
+- Emergency contact access
+- Ride sharing with trusted contacts
+- In-app emergency assistance button
+- Support ticketing system
+- Issue reporting tool
+
+### 3.7 Real-Time Tracking
+
+#### 3.7.1 Driver Tracking
+- GPS-based location tracking
+- ETA updates for riders
+- Route progress visualization
+- Status updates (en route, arrived, etc.)
+- Geofencing for automated status updates
+
+#### 3.7.2 Ride Status Management
+- Status transition workflow:
+  - Booked
+  - Driver assigned
+  - En route to pickup
+  - Arrived at pickup
+  - Trip in progress
+  - Arrived at destination
+  - Completed
+- Automated status changes based on location
+- Manual status update options
+- Status history logging
+
+### 3.8 Reviews & Ratings
+
+#### 3.8.1 Rating System
+- Post-ride rating for both riders and drivers
+- Multiple rating categories:
+  - Punctuality
+  - Vehicle condition
+  - Communication
+  - Driving quality
+  - Overall experience
+- Rating history and averages
+
+#### 3.8.2 Feedback Collection
+- Detailed feedback forms
+- Issue reporting mechanism
+- Improvement suggestions
+- Compliment system
+- Response handling
+
+## 4. Technical Requirements
+
+### 4.1 Frontend Architecture
+
+#### 4.1.1 UI Framework
+- Responsive design using Tailwind CSS
+- Shadcn UI component library integration
+- Consistent design system across all interfaces
+- Accessibility compliance (WCAG 2.1 AA)
+- Cross-browser and cross-device compatibility
+
+#### 4.1.2 Core UI Components (Shadcn)
+- Authentication: `Card`, `Form`, `Input`, `Button` components
+- Dashboard: `Tabs`, `DataTable`, `DropdownMenu` components
+- Bidding: `Dialog`, `Form`, `Slider`, `Toast` components
+- Maps: Integration within `Card` and `ScrollArea` components
+- Communication: `Textarea`, `Avatar`, `Badge` components
+- Profile: `Form`, `Input`, `Select`, `Switch` components
+
+#### 4.1.3 State Management
+- Context API for global state
+- React Query for data fetching and state management
+- Local storage for persistent settings
+- Component-level state for UI interactions
+- Reusable hooks for common operations
+- State update strategies for real-time data:
+  - Selective state updates to prevent UI flicker
+  - Optimistic updates for better user experience
+  - Proper synchronization between server and client state
+- Proper subscription cleanup during component unmounting
+
+#### 4.1.4 Component Architecture
+- Create small, focused components (< 50 lines when possible)
+- Use a clear folder structure separating pages, components, hooks, utils
+- Follow a consistent naming convention
+- Implement higher-order components for shared functionality (error boundaries, auth)
+Create custom hooks for complex logic and data fetching
+
+### 4.1.5 Homepage Retention
+- Maintain the current homepage design and layout from the existing application
+- Use the existing homepage as a starting point rather than redesigning from scratch
+- Ensure consistent styling and component usage between the retained homepage and new pages
+- Update any backend connections or data fetching methods as needed while preserving the visual design
+- Reference screenshots or provide access to the current homepage design for implementation
+
+### 4.2 Backend Architecture
+
+#### 4.2.1 API Design
+- RESTful API structure
+- Comprehensive endpoint documentation
+- Authentication middleware
+- Rate limiting and security measures
+- Error handling standards
+
+#### 4.2.2 Database Schema
+- User management tables
+- Ride and bidding tables
+- Transaction records
+- Message storage
+- Analytics and metrics collection
+- Document storage
+- Supabase Configuration:
+  - Set up `REPLICA IDENTITY FULL` for real-time tables
+  - Add tables to `supabase_realtime` publication
+  - Configure proper foreign key relationships
+  - Set up efficient indexing for frequently queried fields
+
+#### 4.2.3 Real-Time Services
+- WebSocket implementation for live updates
+- Pub/sub architecture for notifications
+- Push notification service integration
+- Status synchronization system
+- Connection management and fallbacks
+- Consistent Channel Naming:
+  - Follow pattern `public:table_name` for public channels
+  - Use `private:user_id:resource_type` for private user channels
+  - Document channel naming standards for developer reference
+- Subscription Management:
+  - Create centralized subscription hooks
+  - Implement proper error handling for subscription failures
+  - Add retry mechanisms with exponential backoff
+  - Ensure proper cleanup on component unmount
+
+#### 4.2.4 Authentication & Authorization
+- JWT-based authentication
+- Role-based access control (rider, driver, admin)
+- Session management and renewal
+- Row-Level Security (RLS) policies:
+  - Implement granular policies based on user roles
+  - Test policies with different user contexts
+  - Ensure policies don't block legitimate real-time updates
+
+### 4.3 Integration Requirements
+
+#### 4.3.1 Maps & Location Services
+- Google Maps API integration
+- Geocoding and reverse geocoding
+- Route calculation and optimization
+- Real-time tracking implementation
+- Location search and autocomplete
+
+#### 4.3.2 Payment Processing
+- Stripe API integration
+- PCI compliance implementation
+- Secure payment handling
+- Refund processing capabilities
+- Transaction logging and reconciliation
+
+#### 4.3.3 Notification Services
+- Push notification service (Firebase)
+- SMS integration (Twilio)
+- Email service integration
+- In-app notification system
+- Notification preference management
+
+#### 4.3.4 External Services
+- Background check provider integration
+- Document verification services
+- Analytics and reporting tools
+- Customer support integration
+- Feedback collection system
+
+### 4.4 Performance Requirements
+
+#### 4.4.1 Scalability
+- Horizontal scaling capabilities
+- Load balancing implementation
+- Database optimization strategies
+- Caching for improved performance
+- Microservices architecture for key components
+
+#### 4.4.2 Responsiveness
+- Application response time under 2 seconds
+- Real-time updates delivery within 500ms
+- Optimized image and asset loading
+- Offline capabilities for critical functions
+- Graceful degradation in poor network conditions
+
+#### 4.4.3 Reliability
+- 99.9% system uptime goal
+- Error logging and monitoring
+- Automated testing implementation
+- Backup and recovery systems
+- Fault tolerance architecture
+
+### 4.5 Real-Time Implementation Patterns
+
+#### 4.5.1 Subscription Management
+- Create a centralized subscription hook:
+  ```typescript
+  // useRideSubscription.ts
+  export const useRideSubscription = (rideId, options) => {
+    // Set up consistent channel naming
+    // Handle component lifecycle properly
+    // Implement smart throttling
+    // Provide proper error handling and retries
+  }
+  ```
+- Implement isMountedRef pattern to prevent updates on unmounted components
+- Use effect cleanup functions to unsubscribe from channels
+
+#### 4.5.2 Throttling Strategy
+- Implement smart throttling with bypass options:
+  ```typescript
+  // useThrottledFetch.ts
+  export const useThrottledFetch = (minInterval = 5000) => {
+    // Track last fetch time
+    // Allow force refresh flag to bypass throttling
+    // Log throttling decisions for debugging
+  }
+  ```
+- Configure different throttling rules for different update types
+- Ensure critical updates bypass throttling mechanisms
+
+#### 4.5.3 Error Handling
+- Implement retry mechanisms with exponential backoff
+- Create consistent error boundaries at page level
+- Use toast notifications for user feedback on errors
+- Log errors with contextual information for debugging
+
+#### 4.5.4 State Synchronization
+- Implement optimistic UI updates with rollback capability
+- Differentiate between user-initiated and server-initiated state changes
+- Create strategies for handling conflicting updates
+- Implement proper merge logic for partial updates
+
+## 5. Smart Pricing Algorithm
+
+### 5.1 Pricing Components
+- Base fare by service level (ambulatory, wheelchair, stretcher)
+- Mileage rate
+- Wait time rate
+- Time-based adjustments (after-hours, weekends)
+- Special service add-ons (companion, stair chair)
+- Platform fee percentage
+
+### 5.2 Calculation Method
+```
+Final Price = (Base Fare + (Mileage × Rate) + (Wait Time × Rate) + Special Services) + Platform Fee
+```
+
+### 5.3 Dynamic Variables
+- Base rates by service level:
+  - Ambulatory: $X
+  - Wheelchair: $Y
+  - Stretcher: $Z
+- Mileage rates by service level
+- Wait time rates (per hour)
+- After-hours adjustment (weekdays after 6:00 PM and before 6:00 AM)
+- Weekend adjustment (Friday 6:00 PM – Monday 6:00 AM)
+- Companion service fee
+- Platform fee percentage (configurable in admin panel)
+
+### 5.4 Bidding Guidance
+- Suggested price calculation based on standard rates
+- Historical pricing data for similar routes/times
+- Current demand and supply visualization
+- Minimum bid thresholds
+- Bid increment suggestions
+
+## 6. Administrative Controls
+
+### 6.1 User Management
+- User account overview and search
+- Account status management (active, suspended, etc.)
+- Role assignment and permissions
+- Document verification workflow
+- User communication tools
+
+### 6.2 Ride & Bidding Management
+- Live monitoring of active rides
+- Bid activity oversight
+- Manual intervention capabilities
+- Ride reassignment tools
+- Historical ride data access
+
+### 6.3 System Configuration
+- Pricing parameter controls
+- Platform fee adjustment
+- Feature enablement toggles
+- Notification templates
+- System-wide announcements
+
+### 6.4 Analytics & Reporting
+- Key performance indicators dashboard
+- User growth metrics
+- Transaction volume and revenue reporting
+- Service quality metrics
+- Custom report generation
+- Data export functionality
+
+### 6.5 Compliance Management
+- Document verification workflow
+- Compliance status monitoring
+- Audit logging
+- Policy management
+- User agreement updates
+
+## 7. Mobile Experience Requirements
+
+### 7.1 Platform Support
+- iOS and Android native app development
+- Responsive web application for desktop access
+- Cross-platform feature parity
+- Device-specific optimization
+
+### 7.2 Mobile-Specific Features
+- Push notification implementation
+- Offline mode capabilities
+- GPS and location services integration
+- Camera access for document uploads
+- Biometric authentication options
+
+### 7.3 Performance Optimization
+- Minimal app size
+- Battery usage optimization
+- Data usage efficiency
+- Background processing limitations
+- Storage management
+
+## 8. Implementation Plan
+
+### 8.1 Development Phases
+
+#### Phase 1: Core Platform (Weeks 1-4)
+- User authentication and profile management
+- Basic ride request and bidding functionality
+- Payment integration
+- Fundamental admin controls
+
+#### Phase 2: Enhanced Features (Weeks 5-8)
+- Real-time tracking implementation
+- Advanced bidding features
+- Communication system
+- Expanded admin dashboard
+
+#### Phase 3: Optimization & Polish (Weeks 9-12)
+- Performance optimization
+- Analytics and reporting
+- Enhanced security measures
+- Final UI/UX refinements
+
+### 8.2 Milestone Schedule
+1. **Project Kickoff**: Requirements finalization and architecture planning
+2. **Alpha Release**: Core functionality for internal testing
+3. **Beta Release**: Limited user testing with key features
+4. **V1 Launch**: Public release with complete feature set
+5. **Optimization**: Post-launch improvements based on user feedback
+
+### 8.3 Technical Setup Process
+1. Initialize React project with TypeScript
+2. Configure Supabase with proper tables and RLS policies
+3. Set up authentication flow with role-based access
+4. Implement core real-time subscription patterns
+5. Create base UI components using Shadcn
+
+## 9. Quality Assurance
+
+### 9.1 Testing Requirements
+- Comprehensive unit test coverage
+- Integration testing for critical components
+- End-to-end testing for user flows
+- Performance testing under various conditions
+- Security and penetration testing
+- Accessibility compliance testing
+- Real-time functionality testing across different user roles
+
+### 9.2 Acceptance Criteria
+- Feature-specific functionality verification
+- Performance benchmark achievement
+- Usability testing success
+- Security requirements compliance
+- Platform compatibility verification
+
+## 10. Post-Launch Considerations
+
+### 10.1 Monitoring & Support
+- Performance monitoring setup
+- User behavior analytics
+- Error tracking and alerting
+- User support system
+- Feedback collection mechanism
+- Real-time system health monitoring
+
+### 10.2 Ongoing Maintenance
+- Regular security updates
+- Bug fix prioritization
+- Performance optimization
+- Technical debt management
+- Platform scalability improvements
+
+### 10.3 Future Enhancements
+- AI-driven pricing recommendations
+- Advanced matching algorithms
+- Additional vehicle types and services
+- Enhanced analytics and reporting
+- Integration with healthcare information systems
+
+## 11. Success Metrics
+
+### 11.1 User Adoption
+- New user registration rate
+- Active user growth
+- User retention metrics
+- Feature engagement statistics
+
+### 11.2 Business Performance
+- Transaction volume
+- Revenue growth
+- Average ride value
+- Platform fee generation
+- Customer acquisition cost
+
+### 11.3 Service Quality
+- Average rider rating
+- Average driver rating
+- Ride completion rate
+- On-time arrival percentage
+- Customer support resolution rate
+
+## 12. Development Best Practices
+
+### 12.1 Code Organization
+- Follow consistent folder structure:
+  ```
+  src/
+    ├── components/    # Reusable UI components
+    ├── pages/         # Route-based page components
+    ├── hooks/         # Custom React hooks
+    ├── utils/         # Helper functions and utilities
+    ├── context/       # React Context providers
+    ├── api/           # API service functions
+    ├── types/         # TypeScript type definitions
+    └── styles/        # Global styles and theme
+  ```
+- Use descriptive, consistent naming conventions
+- Keep components small and focused (< 50 lines when possible)
+- Create higher-order components for shared functionality
+
+### 12.2 State Management Practices
+- Keep state as local as possible
+- Use React Query for server state management
+- Implement context providers for global application state
+- Clearly separate UI state from data state
+- Document state management patterns for development team
+
+### 12.3 Real-Time Development Guidelines
+- Follow consistent channel naming patterns
+- Implement proper error handling and retries
+- Ensure proper cleanup of subscriptions
+- Test real-time functionality across different user roles
+- Document Supabase configuration requirements
+
+### 12.4 Performance Optimization
+- Implement code splitting for reduced bundle size
+- Use lazy loading for non-critical components
+- Optimize database queries and indexing
+- Implement efficient rendering techniques to prevent unnecessary re-renders
+- Use proper memoization strategies
+
+### 12.5 Documentation Standards
+- Document complex logic and API interactions
+- Create comprehensive API documentation
+- Add inline code comments for clarity
+- Maintain up-to-date architecture diagrams
+- Create onboarding materials for new developers
+
+## Appendix
+
+### A. UI/UX Wireframes
+- Link to design mockups and wireframes
+- User flow diagrams
+- Design system documentation
+
+### B. Data Schema
+- Entity relationship diagrams
+- Table definitions
+- Field descriptions
+- Indexing strategy
+- Supabase configuration details
+
+### C. API Documentation
+- Endpoint specifications
+- Request/response formats
+- Authentication details
+- Error codes and handling
+- Rate limiting information
+
+### D. Third-Party Services
+- Google Maps API
+- Stripe payment processing
+- Push notification services
+- SMS and email providers
+- Background check services
+
+### E. Real-Time Implementation Examples
+- Subscription hook patterns
+- Channel naming conventions
+- Error handling examples
+- State synchronization strategies
+
+
+ Ask any questions that will help clarify production.

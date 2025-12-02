@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Document Upload Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input, select, button { padding: 8px; margin: 5px 0; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 20px 0; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Document Upload Test</h1>
+    
+    <form id="uploadForm">
+        <div class="form-group">
+            <label for="docType">Document Type:</label>
+            <select id="docType" required>
+                <option value="">Select document type</option>
+                <option value="licensePhotoFront">License Photo Front</option>
+                <option value="licensePhotoBack">License Photo Back</option>
+                <option value="insuranceDocument">Insurance Document</option>
+                <option value="vehicleRegistration">Vehicle Registration</option>
+                <option value="mvrRecord">MVR Record</option>
+                <option value="backgroundCheck">Background Check</option>
+                <option value="drugTestResults">Drug Test Results</option>
+                <option value="medicalCertification">Medical Certification</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="fileInput">Select File:</label>
+            <input type="file" id="fileInput" accept="image/*,.pdf" required>
+        </div>
+        
+        <button type="submit">Upload Document</button>
+    </form>
+    
+    <div id="result" class="result" style="display: none;"></div>
+    
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const docType = document.getElementById('docType').value;
+            const fileInput = document.getElementById('fileInput');
+            
+            if (!fileInput.files[0]) {
+                alert('Please select a file');
+                return;
+            }
+            
+            formData.append('document', fileInput.files[0]);
+            formData.append('docType', docType);
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Uploading...';
+            
+            try {
+                const response = await fetch('/api/driver/documents/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <h3>Upload Successful!</h3>
+                        <p>Document Type: ${docType}</p>
+                        <p>File: ${fileInput.files[0].name}</p>
+                        <p>Response: ${JSON.stringify(result, null, 2)}</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>Upload Failed</h3>
+                        <p>Error: ${result.message || 'Unknown error'}</p>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>Upload Error</h3>
+                    <p>Error: ${error.message}</p>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

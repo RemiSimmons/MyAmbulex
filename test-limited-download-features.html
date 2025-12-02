@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limited Download Features Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .results { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 3px; max-height: 300px; overflow-y: auto; }
+        .endpoint { font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 3px; }
+        .feature-list { list-style-type: none; padding: 0; }
+        .feature-list li { padding: 5px 0; }
+        .supported { color: green; }
+        .not-supported { color: red; text-decoration: line-through; }
+        .limited { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>MyAmbulex Limited Download/Retrieval Features Test</h1>
+    
+    <div class="test-section">
+        <h2>Feature Overview</h2>
+        <div class="info">Testing basic streaming with limited functionality for beta launch</div>
+        
+        <h3>✅ Supported Features:</h3>
+        <ul class="feature-list">
+            <li class="supported">✓ Basic document download with streaming</li>
+            <li class="supported">✓ Simple authentication and role-based access</li>
+            <li class="supported">✓ Basic rate limiting (10 downloads/hour)</li>
+            <li class="supported">✓ Simple document listing with basic filtering</li>
+            <li class="supported">✓ Document metadata (filename, type, size, status)</li>
+            <li class="supported">✓ Error handling and user feedback</li>
+        </ul>
+        
+        <h3>❌ Intentionally Limited Features:</h3>
+        <ul class="feature-list">
+            <li class="not-supported">✗ Bulk download capabilities</li>
+            <li class="not-supported">✗ Document preview functionality</li>
+            <li class="not-supported">✗ Advanced search/filtering options</li>
+            <li class="not-supported">✗ Document thumbnails or previews</li>
+            <li class="not-supported">✗ Batch operations</li>
+            <li class="not-supported">✗ Advanced streaming features (resume, range requests)</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 1: User Authentication</h2>
+        <form id="loginForm">
+            <label>Username: <input type="text" id="username" value="testdriver"></label><br>
+            <label>Password: <input type="password" id="password" value="password123"></label><br>
+            <button type="submit">Login</button>
+        </form>
+        <div id="loginResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Test Document Listing</h2>
+        <div style="display: none;" id="listingSection">
+            <button id="testListingBtn">Get My Documents</button>
+            <div>
+                <label>Filter by Type: 
+                    <select id="typeFilter">
+                        <option value="">All Types</option>
+                        <option value="license">License</option>
+                        <option value="insurance">Insurance</option>
+                        <option value="vehicle_registration">Vehicle Registration</option>
+                    </select>
+                </label>
+                <label>Filter by Status: 
+                    <select id="statusFilter">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/documents/my-documents</span></div>
+        <div id="listingResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Test Document Download</h2>
+        <div style="display: none;" id="downloadSection">
+            <div id="downloadableDocuments"></div>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/documents/:id/download</span></div>
+        <div id="downloadResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Test Rate Limiting</h2>
+        <div style="display: none;" id="rateLimitSection">
+            <button id="testRateLimitBtn">Test Multiple Downloads</button>
+            <div class="warning">This will attempt 12 downloads to test the 10/hour limit</div>
+        </div>
+        <div id="rateLimitResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 5: Test Document Info</h2>
+        <div style="display: none;" id="infoSection">
+            <div id="infoDocuments"></div>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/documents/:id/info</span></div>
+        <div id="infoResult" class="results"></div>
+    </div>
+
+    <script>
+        let isLoggedIn = false;
+        let availableDocuments = [];
+
+        // Login functionality
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                const resultDiv = document.getElementById('loginResult');
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Login successful!</span><br><span class="info">Welcome, ${result.user.firstName} ${result.user.lastName} (${result.user.role})</span>`;
+                    isLoggedIn = true;
+                    enableFeatureTests();
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Login failed: ${result.message}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        function enableFeatureTests() {
+            document.getElementById('listingSection').style.display = 'block';
+            document.getElementById('downloadSection').style.display = 'block';
+            document.getElementById('rateLimitSection').style.display = 'block';
+            document.getElementById('infoSection').style.display = 'block';
+        }
+
+        // Document listing test
+        document.getElementById('testListingBtn').addEventListener('click', async () => {
+            const typeFilter = document.getElementById('typeFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            
+            const params = new URLSearchParams();
+            if (typeFilter) params.append('type', typeFilter);
+            if (statusFilter) params.append('status', statusFilter);
+            
+            try {
+                const response = await fetch(`/api/documents/my-documents?${params}`, {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('listingResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    availableDocuments = data.documents;
+                    
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Document listing retrieved!</span><br>
+                        <strong>Total Documents:</strong> ${data.total}<br>
+                        <strong>Advanced Features:</strong> ${data.hasAdvancedFeatures ? 'Enabled' : 'Disabled (Limited Mode)'}<br>
+                        <strong>Documents:</strong><br>
+                        <pre>${JSON.stringify(data.documents, null, 2)}</pre>
+                    `;
+                    
+                    // Populate download options
+                    populateDownloadOptions(data.documents);
+                    populateInfoOptions(data.documents);
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('listingResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        function populateDownloadOptions(documents) {
+            const container = document.getElementById('downloadableDocuments');
+            if (documents.length === 0) {
+                container.innerHTML = '<div class="info">No documents available for download</div>';
+                return;
+            }
+            
+            container.innerHTML = documents.map(doc => `
+                <button onclick="testDownload(${doc.id}, '${doc.filename}')" class="download-btn">
+                    Download: ${doc.filename} (${doc.type})
+                </button>
+            `).join('<br>');
+        }
+
+        function populateInfoOptions(documents) {
+            const container = document.getElementById('infoDocuments');
+            if (documents.length === 0) {
+                container.innerHTML = '<div class="info">No documents available</div>';
+                return;
+            }
+            
+            container.innerHTML = documents.map(doc => `
+                <button onclick="testDocumentInfo(${doc.id}, '${doc.filename}')" class="info-btn">
+                    Info: ${doc.filename}
+                </button>
+            `).join('<br>');
+        }
+
+        // Test document download
+        async function testDownload(documentId, filename) {
+            try {
+                const response = await fetch(`/api/documents/${documentId}/download`, {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('downloadResult');
+                
+                if (response.ok) {
+                    // Create blob and trigger download
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    
+                    resultDiv.innerHTML = `<span class="success">✅ Download successful: ${filename}</span>`;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Download failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('downloadResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        // Test document info
+        async function testDocumentInfo(documentId, filename) {
+            try {
+                const response = await fetch(`/api/documents/${documentId}/info`, {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('infoResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Document info retrieved: ${filename}</span><br>
+                        <pre>${JSON.stringify(data.document, null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Info failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('infoResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        // Test rate limiting
+        document.getElementById('testRateLimitBtn').addEventListener('click', async () => {
+            if (availableDocuments.length === 0) {
+                document.getElementById('rateLimitResult').innerHTML = '<span class="warning">No documents available for rate limit testing</span>';
+                return;
+            }
+            
+            const resultDiv = document.getElementById('rateLimitResult');
+            resultDiv.innerHTML = '<span class="info">Testing rate limits...</span>';
+            
+            const docId = availableDocuments[0].id;
+            let successCount = 0;
+            let rateLimitCount = 0;
+            
+            // Attempt 12 downloads to test the 10/hour limit
+            for (let i = 1; i <= 12; i++) {
+                try {
+                    const response = await fetch(`/api/documents/${docId}/download`, {
+                        credentials: 'include'
+                    });
+                    
+                    if (response.ok) {
+                        successCount++;
+                        console.log(`Download ${i}: Success`);
+                    } else if (response.status === 429) {
+                        rateLimitCount++;
+                        console.log(`Download ${i}: Rate limited`);
+                    } else {
+                        console.log(`Download ${i}: Other error`);
+                    }
+                } catch (error) {
+                    console.log(`Download ${i}: Error -`, error.message);
+                }
+                
+                // Small delay between requests
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            resultDiv.innerHTML = `
+                <span class="success">✅ Rate limiting test completed!</span><br>
+                <strong>Successful Downloads:</strong> ${successCount}<br>
+                <strong>Rate Limited:</strong> ${rateLimitCount}<br>
+                <strong>Expected:</strong> ~10 successful, 2+ rate limited<br>
+                <div class="${successCount <= 10 && rateLimitCount > 0 ? 'success' : 'warning'}">
+                    Rate limiting is ${successCount <= 10 && rateLimitCount > 0 ? 'working correctly' : 'not working as expected'}
+                </div>
+            `;
+        });
+
+        // Auto-check authentication status
+        window.addEventListener('load', () => {
+            fetch('/api/user', { credentials: 'include' })
+                .then(response => {
+                    if (response.status === 401) {
+                        document.getElementById('listingResult').innerHTML = '<span class="info">🔒 Please login to test download features</span>';
+                    }
+                });
+        });
+    </script>
+</body>
+</html>

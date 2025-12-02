@@ -1,0 +1,10 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz*.sid
+*cookie*
+*.jar
+*.txt # optional, only if none of your real code uses .txt
+uploads/

@@ -1,0 +1,219 @@
+// Root cause fix: Properly handle session updates in WebSocket
+
+class WebSocketManager {
+  constructor() {
+    this.ws = null;
+    this.sessionId = null;
+    this.isAuthenticated = false;
+    this.reconnectTimer = null;
+    
+    // Listen for session renewal events
+    this.setupSessionListener();
+  }
+
+  setupSessionListener() {
+    // Listen for the session renewal event your app is already dispatching
+    window.addEventListener('sessionRenewed', (event) => {
+      console.log('Session renewal detected:', event.detail);
+      
+      // Extract new session from event
+      const newSessionId = event.detail?.newSessionPrefix || event.detail;
+      
+      if (newSessionId && newSessionId !== this.sessionId) {
+        console.log('New session detected, updating WebSocket...');
+        this.handleSessionUpdate(newSessionId);
+      }
+    });
+
+    // Also listen for custom session update events
+    document.addEventListener('session-updated', (event) => {
+      this.handleSessionUpdate(event.detail.sessionId);
+    });
+  }
+
+  handleSessionUpdate(newSessionId) {
+    console.log('Updating session from', this.sessionId, 'to', newSessionId);
+    
+    // Update stored session
+    this.sessionId = newSessionId;
+    
+    // If WebSocket is connected, reconnect with new session
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('Closing current WebSocket to reconnect with new session...');
+      this.ws.close(1000, 'Session updated');
+    }
+    
+    // Clear any pending reconnect timers
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    
+    // Reconnect with new session
+    this.connect();
+  }
+
+  getCurrentSessionId() {
+    // Always get the freshest session from cookies
+    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+      const [key, value] = cookie.trim().split('=');
+      acc[key] = value;
+      return acc;
+    }, {});
+    
+    // Look for session in multiple possible cookie names
+    const sessionId = cookies['connect.sid'] || 
+                     cookies['sessionId'] || 
+                     cookies['session'] ||
+                     cookies['__session'];
+    
+    if (sessionId) {
+      // Handle URL-encoded sessions
+      return decodeURIComponent(sessionId);
+    }
+    
+    return null;
+  }
+
+  async connect() {
+    // Always use the latest session from cookies
+    const currentSession = this.getCurrentSessionId();
+    
+    if (!currentSession) {
+      console.error('No session found in cookies');
+      return;
+    }
+    
+    // Check if this is a different session than what we have
+    if (this.sessionId && this.sessionId !== currentSession) {
+      console.log('Session mismatch detected, using cookie session:', currentSession);
+      this.sessionId = currentSession;
+    }
+    
+    // Build WebSocket URL with current session
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/ws?sessionId=${encodeURIComponent(this.sessionId)}`;
+    
+    console.log('Connecting WebSocket with session:', this.sessionId);
+    
+    try {
+      this.ws = new WebSocket(wsUrl);
+      this.setupWebSocketHandlers();
+    } catch (error) {
+      console.error('WebSocket connection failed:', error);
+      this.scheduleReconnect();
+    }
+  }
+
+  setupWebSocketHandlers() {
+    this.ws.onopen = () => {
+      console.log('WebSocket connected successfully');
+      this.isAuthenticated = true;
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle authentication errors from server
+        if (data.type === 'auth_error' || data.error === 'Unauthorized') {
+          console.log('Authentication error received from server');
+          this.handleAuthError();
+        }
+      } catch (e) {
+        // Handle non-JSON messages
+      }
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      this.isAuthenticated = false;
+    };
+
+    this.ws.onclose = (event) => {
+      console.log(`WebSocket closed: ${event.code} - ${event.reason}`);
+      this.isAuthenticated = false;
+      
+      // Only reconnect if not a normal closure
+      if (event.code !== 1000) {
+        this.scheduleReconnect();
+      }
+    };
+  }
+
+  handleAuthError() {
+    console.log('Handling authentication error...');
+    
+    // Dispatch event to trigger session renewal
+    window.dispatchEvent(new CustomEvent('websocket-auth-failed', {
+      detail: { sessionId: this.sessionId }
+    }));
+    
+    // Close WebSocket to force reconnection
+    if (this.ws) {
+      this.ws.close(1008, 'Authentication failed');
+    }
+  }
+
+  scheduleReconnect() {
+    // Clear any existing timer
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
+    
+    // Exponential backoff with max 30 seconds
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts || 0), 30000);
+    
+    console.log(`Scheduling reconnect in ${delay}ms`);
+    
+    this.reconnectTimer = setTimeout(() => {
+      // Get fresh session before reconnecting
+      const freshSession = this.getCurrentSessionId();
+      if (freshSession !== this.sessionId) {
+        console.log('Session changed during reconnect delay, using new session');
+        this.sessionId = freshSession;
+      }
+      
+      this.connect();
+    }, delay);
+  }
+
+  disconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    
+    if (this.ws) {
+      this.ws.close(1000, 'Client disconnect');
+      this.ws = null;
+    }
+  }
+}
+
+// Initialize the WebSocket manager
+const wsManager = new WebSocketManager();
+
+// Intercept 401 errors and trigger session renewal
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+  const response = await originalFetch.apply(this, args);
+  
+  if (response.status === 401) {
+    console.log('401 Unauthorized detected');
+    
+    // Dispatch event to trigger session renewal
+    window.dispatchEvent(new CustomEvent('unauthorized-error', {
+      detail: { 
+        url: args[0],
+        timestamp: Date.now()
+      }
+    }));
+  }
+  
+  return response;
+};
+
+// Start WebSocket connection
+wsManager.connect();

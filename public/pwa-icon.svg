@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#2563eb" stroke="#1e40af" stroke-width="32"/>
+  
+  <!-- Ambulance cross symbol -->
+  <rect x="216" y="166" width="80" height="180" rx="8" fill="white"/>
+  <rect x="166" y="216" width="180" height="80" rx="8" fill="white"/>
+  
+  <!-- Medical plus highlight -->
+  <rect x="236" y="186" width="40" height="140" rx="4" fill="#eff6ff"/>
+  <rect x="186" y="236" width="140" height="40" rx="4" fill="#eff6ff"/>
+  
+  <!-- Subtle gradient overlay -->
+  <defs>
+    <radialGradient id="gradient" cx="0.3" cy="0.3" r="0.8">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.2);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:rgba(255,255,255,0);stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  <circle cx="256" cy="256" r="240" fill="url(#gradient)"/>
+</svg>

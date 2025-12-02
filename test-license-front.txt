@@ -1,0 +1,13 @@
+SAMPLE DRIVER LICENSE - FRONT
+===============================
+Driver License Number: D123456789
+Name: Steve Campbell
+Address: 123 Main St, Atlanta, GA 30309
+Date of Birth: 01/15/1985
+Issue Date: 03/15/2023
+Expiration Date: 03/15/2028
+Class: C - Regular Driver License
+Restrictions: None
+Endorsements: None
+
+[This is a sample document for testing the admin document review system]

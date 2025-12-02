@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Document Retrieval Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .results { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 3px; max-height: 300px; overflow-y: auto; }
+        .endpoint { font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>MyAmbulex Admin Document Retrieval System Test</h1>
+    
+    <div class="test-section">
+        <h2>Step 1: Admin Login</h2>
+        <form id="loginForm">
+            <label>Username: <input type="text" id="username" value="admin"></label><br>
+            <label>Password: <input type="password" id="password" value="password123"></label><br>
+            <button type="submit">Login as Admin</button>
+        </form>
+        <div id="loginResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Test Document Statistics</h2>
+        <button id="testStatsBtn" style="display: none;">Get Document Statistics</button>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/admin/documents/statistics</span></div>
+        <div id="statsResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Test All Documents Retrieval</h2>
+        <button id="testAllDocsBtn" style="display: none;">Get All Documents</button>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/admin/documents/all</span></div>
+        <div id="allDocsResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Test Verification Queue</h2>
+        <button id="testQueueBtn" style="display: none;">Get Verification Queue</button>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/admin/documents/verification-queue</span></div>
+        <div id="queueResult" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 5: Test User Document Lookup</h2>
+        <div style="display: none;" id="userLookupSection">
+            <label>User ID: <input type="number" id="userIdInput" value="1"></label>
+            <button id="testUserDocsBtn">Get User Documents</button>
+        </div>
+        <div class="info">Endpoint: <span class="endpoint">GET /api/admin/users/:userId/documents</span></div>
+        <div id="userDocsResult" class="results"></div>
+    </div>
+
+    <script>
+        let isAdminLoggedIn = false;
+
+        // Login functionality
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                const resultDiv = document.getElementById('loginResult');
+                
+                if (response.ok && result.user && result.user.role === 'admin') {
+                    resultDiv.innerHTML = `<span class="success">✅ Admin login successful!</span><br><span class="info">Welcome, ${result.user.firstName} ${result.user.lastName}</span>`;
+                    isAdminLoggedIn = true;
+                    enableAdminTests();
+                } else if (response.ok) {
+                    resultDiv.innerHTML = `<span class="error">❌ User logged in but not admin role: ${result.user?.role}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Login failed: ${result.message}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('loginResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        function enableAdminTests() {
+            document.getElementById('testStatsBtn').style.display = 'inline-block';
+            document.getElementById('testAllDocsBtn').style.display = 'inline-block';
+            document.getElementById('testQueueBtn').style.display = 'inline-block';
+            document.getElementById('userLookupSection').style.display = 'block';
+        }
+
+        // Document statistics test
+        document.getElementById('testStatsBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/admin/documents/statistics', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('statsResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Document statistics retrieved!</span><br>
+                        <strong>Storage Method:</strong> ${data.storageInfo.method}<br>
+                        <strong>System Health:</strong> ${JSON.stringify(data.systemHealth, null, 2)}<br>
+                        <strong>Statistics:</strong><br>
+                        <pre>${JSON.stringify(data.statistics, null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('statsResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // All documents test
+        document.getElementById('testAllDocsBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/admin/documents/all?limit=10', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('allDocsResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ All documents retrieved!</span><br>
+                        <strong>Total:</strong> ${data.total}<br>
+                        <strong>Has More:</strong> ${data.hasMore}<br>
+                        <strong>Documents:</strong><br>
+                        <pre>${JSON.stringify(data.documents.slice(0, 3), null, 2)}</pre>
+                        ${data.documents.length > 3 ? `<div class="info">... and ${data.documents.length - 3} more documents</div>` : ''}
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('allDocsResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // Verification queue test
+        document.getElementById('testQueueBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/admin/documents/verification-queue', {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('queueResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Verification queue retrieved!</span><br>
+                        <strong>Total Pending:</strong> ${data.total}<br>
+                        <strong>Status:</strong> ${data.status}<br>
+                        <strong>Queue Items:</strong><br>
+                        <pre>${JSON.stringify(data.queue.slice(0, 2), null, 2)}</pre>
+                        ${data.queue.length > 2 ? `<div class="info">... and ${data.queue.length - 2} more items</div>` : ''}
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('queueResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // User documents test
+        document.getElementById('testUserDocsBtn').addEventListener('click', async () => {
+            const userId = document.getElementById('userIdInput').value;
+            
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/documents`, {
+                    credentials: 'include'
+                });
+                
+                const resultDiv = document.getElementById('userDocsResult');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ User documents retrieved!</span><br>
+                        <strong>User:</strong> ${data.user.firstName} ${data.user.lastName} (${data.user.role})<br>
+                        <strong>Total Documents:</strong> ${data.totalDocuments}<br>
+                        <strong>Uploaded Documents:</strong> ${data.documentStatus.uploadedDocuments.length}<br>
+                        <strong>Legacy Documents:</strong> ${data.documentStatus.legacyDocuments ? 'Present' : 'None'}<br>
+                        <pre>${JSON.stringify(data.documentStatus.uploadedDocuments, null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.error}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('userDocsResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        });
+
+        // Auto-test system health
+        window.addEventListener('load', () => {
+            fetch('/api/admin/documents/statistics', { credentials: 'include' })
+                .then(response => {
+                    if (response.status === 401) {
+                        document.getElementById('statsResult').innerHTML = '<span class="info">🔒 Authentication required - please login first</span>';
+                    } else if (response.status === 403) {
+                        document.getElementById('statsResult').innerHTML = '<span class="info">🛡️ Admin access required - please login as admin</span>';
+                    }
+                });
+        });
+    </script>
+</body>
+</html>

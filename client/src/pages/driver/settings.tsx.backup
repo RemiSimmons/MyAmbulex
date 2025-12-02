@@ -1,0 +1,419 @@
+import React, { useState } from 'react';
+import { useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
+import { useLocation } from 'wouter';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import Header from '@/components/layout/header';
+import Footer from '@/components/layout/footer';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  User, 
+  FileText, 
+  Car, 
+  MapPin, 
+  Clock, 
+  DollarSign,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  BarChart3,
+  Calendar,
+  Navigation,
+  Phone,
+  Mail,
+  Eye,
+  Settings,
+  Upload,
+  ArrowLeft,
+  Home,
+  LogOut,
+  UserX,
+  Shield
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+
+export default function DriverSettings() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const [isCancellingMembership, setIsCancellingMembership] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [confirmCancel, setConfirmCancel] = useState('');
+
+  // Fetch driver status and permissions
+  const { data: driverStatus, isLoading: isLoadingStatus } = useQuery({
+    queryKey: ['/api/driver/status'],
+    enabled: !!user && user.role === 'driver',
+  });
+
+  // Fetch driver profile
+  const { data: driverProfile, isLoading: isLoadingProfile } = useQuery({
+    queryKey: ['/api/driver/profile'],
+    enabled: !!user && user.role === 'driver',
+  });
+
+  // Cancel membership mutation
+  const cancelMembershipMutation = useMutation({
+    mutationFn: async ({ reason }: { reason: string }) => {
+      const response = await apiRequest('POST', '/api/driver/cancel-membership', {
+        reason,
+        confirmCancel: true
+      });
+      if (!response.ok) {
+        throw new Error('Failed to cancel membership');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Membership Cancelled",
+        description: "Your driver membership has been cancelled successfully. Your account information will be preserved.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/driver/status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/driver/profile'] });
+      navigate('/driver/dashboard');
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to cancel membership",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCancelMembership = async () => {
+    if (confirmCancel !== 'CANCEL') {
+      toast({
+        title: "Confirmation Required",
+        description: "Please type 'CANCEL' to confirm membership cancellation",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!cancelReason.trim()) {
+      toast({
+        title: "Reason Required",
+        description: "Please provide a reason for cancelling your membership",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCancellingMembership(true);
+    try {
+      await cancelMembershipMutation.mutateAsync({ reason: cancelReason });
+    } finally {
+      setIsCancellingMembership(false);
+    }
+  };
+
+  if (!user || user.role !== 'driver') {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      
+      <main className="container mx-auto px-4 py-8">
+        {/* Navigation Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/driver/dashboard')}
+              className="flex items-center space-x-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to Dashboard</span>
+            </Button>
+            <h1 className="text-3xl font-bold">Driver Settings</h1>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/driver/dashboard')}
+              className="flex items-center space-x-2"
+            >
+              <Home className="h-4 w-4" />
+              <span>Dashboard</span>
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/auth')}
+              className="flex items-center space-x-2"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </Button>
+          </div>
+        </div>
+
+        <Tabs defaultValue="profile" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
+            <TabsTrigger value="documents">Documents</TabsTrigger>
+            <TabsTrigger value="preferences">Preferences</TabsTrigger>
+            <TabsTrigger value="account">Account</TabsTrigger>
+          </TabsList>
+
+          {/* Profile Settings */}
+          <TabsContent value="profile" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <User className="h-5 w-5" />
+                  <span>Profile Information</span>
+                </CardTitle>
+                <CardDescription>
+                  Manage your personal information and contact details
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="fullName">Full Name</Label>
+                    <Input id="fullName" value={user.fullName || ''} disabled />
+                  </div>
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" value={user.email || ''} disabled />
+                  </div>
+                  <div>
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input id="phone" value={user.phone || ''} disabled />
+                  </div>
+                  <div>
+                    <Label htmlFor="username">Username</Label>
+                    <Input id="username" value={user.username || ''} disabled />
+                  </div>
+                </div>
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    To update your profile information, please contact support.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
+            {/* Driver Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Shield className="h-5 w-5" />
+                  <span>Driver Status</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingStatus ? (
+                  <div className="flex items-center space-x-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Loading status...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span>Application Status</span>
+                      <Badge variant={(driverStatus as any)?.applicationStatus === 'active' ? 'default' : 'secondary'}>
+                        {(driverStatus as any)?.applicationStatus || 'Unknown'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Email Verified</span>
+                      <Badge variant={user.emailVerified ? 'default' : 'destructive'}>
+                        {user.emailVerified ? 'Verified' : 'Not Verified'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Phone Verified</span>
+                      <Badge variant={user.phoneVerified ? 'default' : 'destructive'}>
+                        {user.phoneVerified ? 'Verified' : 'Not Verified'}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Vehicle Settings */}
+          <TabsContent value="vehicle" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Car className="h-5 w-5" />
+                  <span>Vehicle Information</span>
+                </CardTitle>
+                <CardDescription>
+                  Manage your registered vehicle details
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <Car className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-4">Vehicle management features coming soon</p>
+                  <Button variant="outline" onClick={() => navigate('/driver/add-vehicle')}>
+                    Manage Vehicles
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Documents */}
+          <TabsContent value="documents" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <FileText className="h-5 w-5" />
+                  <span>Documents</span>
+                </CardTitle>
+                <CardDescription>
+                  Manage your verification documents
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-4">Document management features available</p>
+                  <Button variant="outline" onClick={() => navigate('/driver/documents')}>
+                    Manage Documents
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Preferences */}
+          <TabsContent value="preferences" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Settings className="h-5 w-5" />
+                  <span>Preferences</span>
+                </CardTitle>
+                <CardDescription>
+                  Configure your ride preferences and notifications
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <Settings className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-4">Preferences management available</p>
+                  <Button variant="outline" onClick={() => navigate('/driver/ride-filters')}>
+                    Manage Ride Filters
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Account Management */}
+          <TabsContent value="account" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <UserX className="h-5 w-5" />
+                  <span>Account Management</span>
+                </CardTitle>
+                <CardDescription>
+                  Manage your account settings and membership
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Cancelling your membership will deactivate your driver account but preserve your information. 
+                    You can reactivate your account at any time by contacting support.
+                  </AlertDescription>
+                </Alert>
+
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="destructive" className="flex items-center space-x-2">
+                      <UserX className="h-4 w-4" />
+                      <span>Cancel Membership</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Cancel Driver Membership</DialogTitle>
+                      <DialogDescription>
+                        This will deactivate your driver account. Your information will be preserved and you can reactivate later.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="cancelReason">Reason for cancellation</Label>
+                        <Textarea
+                          id="cancelReason"
+                          placeholder="Please tell us why you're cancelling..."
+                          value={cancelReason}
+                          onChange={(e) => setCancelReason(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="confirmCancel">Type "CANCEL" to confirm</Label>
+                        <Input
+                          id="confirmCancel"
+                          placeholder="CANCEL"
+                          value={confirmCancel}
+                          onChange={(e) => setConfirmCancel(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="destructive"
+                        onClick={handleCancelMembership}
+                        disabled={isCancellingMembership || confirmCancel !== 'CANCEL' || !cancelReason.trim()}
+                      >
+                        {isCancellingMembership ? (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            Cancelling...
+                          </>
+                        ) : (
+                          'Cancel Membership'
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}

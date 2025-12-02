@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>MyAmbulex - Medical Transportation Bidding Platform</title>
+    <meta name="description" content="Connect with reliable medical transportation drivers. Safe, affordable, and compassionate non-emergency medical transport services." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://myambulex.com/" />
+    <meta property="og:title" content="MyAmbulex - Medical Transportation Bidding Platform" />
+    <meta property="og:description" content="Connect with reliable medical transportation drivers. Safe, affordable, and compassionate non-emergency medical transport services." />
+    <meta property="og:image" content="/images/myambulex-logo-heart.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MyAmbulex">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="MyAmbulex">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" href="/pwa-icons/icon-192x192.svg">
+    <meta name="msapplication-TileImage" content="/pwa-icons/icon-144x144.svg">
+    <meta name="msapplication-TileColor" content="#4A90E2">
+    
+    <!-- Theme Colors -->
+    <meta name="theme-color" content="#4A90E2">
+    <meta name="msapplication-navbutton-color" content="#4A90E2">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    
+    <!-- Enhanced PWA Identity -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="apple-mobile-web-app-title" content="MyAmbulex">
+    <meta name="application-name" content="MyAmbulex">
+    <meta name="msapplication-TileColor" content="#4A90E2">
+    <meta name="msapplication-config" content="/browserconfig.xml">
+    
+    <!-- PWA Window Controls Overlay -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#4A90E2">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#357ABD">
+    <meta property="twitter:url" content="https://myambulex.com/" />
+    <meta property="twitter:title" content="MyAmbulex - Medical Transportation Bidding Platform" />
+    <meta property="twitter:description" content="Connect with reliable medical transportation drivers. Safe, affordable, and compassionate non-emergency medical transport services." />
+    <meta property="twitter:image" content="/images/myambulex-logo-heart.png" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/images/myambulex-logo-heart.png" />
+    <link rel="apple-touch-icon" href="/images/myambulex-logo-heart.png" />
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- PWA Service Worker Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('[PWA] Service Worker registered:', registration.scope);
+            })
+            .catch(error => {
+              console.error('[PWA] Service Worker registration failed:', error);
+            });
+        });
+      }
+    </script>
+    
+    <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment -->
+    <script type="text/javascript" src="https://replit.com/public/js/replit-dev-banner.js"></script>
+  </body>
+</html>

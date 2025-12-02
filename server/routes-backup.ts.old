@@ -1,0 +1,3922 @@
+import type { Express, Request, Response } from "express";
+import express from "express";
+import { createServer, type Server } from "http";
+import { z } from "zod";
+import { storage } from "./storage";
+import { optimizedStorage } from "./performance-optimizations";
+import { setupAuth } from "./auth";
+import { isAuthenticated } from "./middleware/auth";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import Stripe from "stripe";
+import userProfileRouter from "./routes/user-profile";
+import userProfileApiRouter from "./routes/user-profile-api";
+import authDiagnosticRouter from "./routes/auth-diagnostic";
+import savedAddressesRouter from "./routes/saved-addresses";
+import adminRouter from "./routes/admin";
+// import adminDocumentsRouter from "./routes/admin-documents"; // MOVED TO ASYNC SECTION
+import testingRouter from "./routes/testing";
+import betaManagementRouter from "./routes/beta-management";
+import betaInvitationsRouter from "./routes/beta-invitations";
+import driverRouter from "./routes/driver";
+import driverOnboardingRouter from "./routes/driver-onboarding";
+import driverOnboardingProgressRouter from "./routes/driver-onboarding-progress";
+import driverDocumentsRouter from "./routes/driver-documents";
+import riderRouter from "./routes/rider";
+import riderOnboardingRouter from "./routes/rider-onboarding";
+import paymentRouter from "./routes/payment";
+import userSettingsRouter from "./routes/user-settings";
+import recurringAppointmentsRouter from "./routes/recurring-appointments";
+import driverAvailabilityRouter from "./routes/driver-availability";
+import driverRideFiltersRouter from "./routes/driver-ride-filters";
+import analyticsRouter from "./routes/analytics";
+import chatRouter from "./routes/chat";
+import promoCodesRouter from "./routes/promo-codes";
+import { notificationService, NotificationType, FriendlyCharacter } from "./notifications";
+import onboardingNotificationsRoutes from "./routes/onboarding-notifications";
+import driverDashboardRoutes from "./routes/driver-dashboard";
+import emailNotificationsRoutes from "./routes/email-notifications";
+import { createPaypalOrder, capturePaypalOrder, loadPaypalDefault } from "./paypal";
+import { emailNotificationService } from "./email-notification-service";
+import { emailAutomationService } from "./email-automation";
+import { emailVerificationService } from "./email-verification";
+import { backgroundCheckService } from "./background-check";
+import { driverPermissionsService } from "./driver-permissions";
+import { fareCalculator } from "./fare-calculator";
+import { paymentService } from "./payment-service";
+import { gpsTrackingService } from "./gps-tracking";
+import { sseManager } from "./sse-manager";
+import { advancedNotificationService } from "./advanced-notifications";
+import { setupSSERoutes } from "./routes/sse";
+import { automaticPaymentService } from "./automatic-payment-service";
+import { 
+  insertRideSchema, 
+  insertBidSchema,
+  InsertBid,
+  insertUserProfileSchema,
+  insertDriverDetailsSchema,
+  insertVehicleSchema,
+  insertRideEditSchema,
+  insertRatingSchema,
+  insertRatingResponseSchema,
+  insertDriverAchievementSchema,
+  type ChatMessage,
+  type Rating,
+  type RatingResponse,
+  type DriverAchievement
+} from "@shared/schema";
+
+// Type definition for the global object
+declare global {
+  var registrationProgress: {
+    [key: string]: {
+      step: number;
+      formData: any;
+      vehicleData: any;
+      lastSaved: Date;
+    }
+  } | undefined;
+}
+
+// Stripe is now initialized in stripe-service.ts
+
+// Middleware to check if user is authenticated
+const isAuthenticated = (req: Request, res: Response, next: Function) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ message: "Unauthorized" });
+};
+
+// Middleware to check if user has specific role(s)
+const hasRole = (roles: string | string[]) => (req: Request, res: Response, next: Function) => {
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  
+  const allowedRoles = Array.isArray(roles) ? roles : [roles];
+  
+  if (allowedRoles.includes(req.user.role)) {
+    return next();
+  }
+  
+  res.status(403).json({ message: "Insufficient permissions" });
+};
+
+// Define WebSocket connection map for real-time tracking
+interface DriverLocation {
+  lat: number;
+  lng: number;
+  timestamp: Date;
+}
+
+interface LocationUpdate {
+  type: 'location_update';
+  driverId: number;
+  rideId: number;
+  location: DriverLocation;
+}
+
+interface TrackingMessage {
+  type: 'start_tracking' | 'stop_tracking';
+  role: 'driver' | 'rider';
+  userId: number;
+  rideId: number;
+}
+
+interface RideStatusUpdate {
+  type: 'ride_status_update';
+  rideId: number;
+  oldStatus: string;
+  newStatus: string;
+  updatedBy: {
+    id: number;
+    username: string;
+    role: string;
+  };
+  timestamp: Date;
+}
+
+interface BidUpdate {
+  type: 'bid_update';
+  bidId: number;
+  rideId: number;
+  status: string;
+  amount: number;
+  fromUserId: number;
+  toUserId: number;
+  timestamp: Date;
+}
+
+interface NotificationMessage {
+  type: 'notification';
+  notificationId: string;
+  userId: number;
+  title: string;
+  message: string;
+  notificationType: string;
+  read: boolean;
+  timestamp: Date;
+  link?: string;
+}
+
+interface ChatMessage {
+  type: 'chat_message';
+  messageId: number;
+  conversationId: number;
+  senderId: number;
+  content: string;
+  timestamp: Date;
+  attachmentUrl?: string;
+  attachmentType?: string;
+  isSystemMessage?: boolean;
+}
+
+interface TypingIndicator {
+  type: 'typing_indicator';
+  conversationId: number;
+  userId: number;
+  isTyping: boolean;
+  timestamp: Date;
+}
+
+interface ReadReceipt {
+  type: 'read_receipt';
+  conversationId: number;
+  userId: number;
+  lastReadMessageId: number;
+  timestamp: Date;
+}
+
+type WebSocketMessage = LocationUpdate | TrackingMessage | RideStatusUpdate | BidUpdate | NotificationMessage | ChatMessage | TypingIndicator | ReadReceipt;
+
+// Maps to track active connections
+const rideConnections = new Map<number, Set<WebSocket>>();
+const userConnections = new Map<number, WebSocket>();
+
+// Helper function to broadcast ride status updates to all connected users involved in the ride
+const broadcastRideStatusUpdate = (ride: any, oldStatus: string, newStatus: string, updatedBy: any) => {
+  const message: RideStatusUpdate = {
+    type: 'ride_status_update',
+    rideId: ride.id,
+    oldStatus,
+    newStatus,
+    updatedBy: {
+      id: updatedBy.id,
+      username: updatedBy.username,
+      role: updatedBy.role
+    },
+    timestamp: new Date()
+  };
+
+  // Broadcast to all users connected to this ride
+  const connections = rideConnections.get(ride.id);
+  if (connections) {
+    const messageStr = JSON.stringify(message);
+    connections.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(messageStr);
+      }
+    });
+    console.log(`Broadcast ride status update for ride ${ride.id} to ${connections.size} clients`);
+  }
+
+  // Also send to the rider and driver directly
+  if (ride.riderId) {
+    const riderConnection = userConnections.get(ride.riderId);
+    if (riderConnection && riderConnection.readyState === WebSocket.OPEN) {
+      riderConnection.send(JSON.stringify(message));
+    }
+  }
+
+  if (ride.driverId) {
+    const driverConnection = userConnections.get(ride.driverId);
+    if (driverConnection && driverConnection.readyState === WebSocket.OPEN) {
+      driverConnection.send(JSON.stringify(message));
+    }
+  }
+};
+
+// Helper function to broadcast bid updates to involved users
+const broadcastBidUpdate = (bid: any, ride: any) => {
+  const message: BidUpdate = {
+    type: 'bid_update',
+    bidId: bid.id,
+    rideId: ride.id,
+    status: bid.status,
+    amount: bid.amount,
+    fromUserId: bid.driverId, // In our system, bids are typically from drivers
+    toUserId: ride.riderId,
+    timestamp: new Date()
+  };
+
+  // Send to the rider
+  const riderConnection = userConnections.get(ride.riderId);
+  if (riderConnection && riderConnection.readyState === WebSocket.OPEN) {
+    riderConnection.send(JSON.stringify(message));
+    console.log(`Sent bid update to rider ${ride.riderId}`);
+  }
+
+  // Send to the driver
+  const driverConnection = userConnections.get(bid.driverId);
+  if (driverConnection && driverConnection.readyState === WebSocket.OPEN) {
+    driverConnection.send(JSON.stringify(message));
+    console.log(`Sent bid update to driver ${bid.driverId}`);
+  }
+};
+
+// Helper function to broadcast notifications to a user
+const broadcastNotification = (userId: number, notification: any) => {
+  const message: NotificationMessage = {
+    type: 'notification',
+    notificationId: notification.id,
+    userId: userId,
+    title: notification.title,
+    message: notification.message,
+    notificationType: notification.type,
+    read: notification.read,
+    timestamp: notification.createdAt || new Date(),
+    link: notification.link
+  };
+
+  // Send to the specific user
+  const userConnection = userConnections.get(userId);
+  if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+    userConnection.send(JSON.stringify(message));
+    console.log(`Sent notification to user ${userId}`);
+  }
+};
+
+// Helper function to broadcast chat messages
+const broadcastChatMessage = (message: any, conversationParticipants: number[]) => {
+  const wsMessage: ChatMessage = {
+    type: 'chat_message',
+    messageId: message.id,
+    conversationId: message.conversationId,
+    senderId: message.senderId,
+    content: message.content,
+    timestamp: message.createdAt,
+    attachmentUrl: message.attachmentUrl || undefined,
+    attachmentType: message.attachmentType || undefined,
+    isSystemMessage: message.isSystemMessage || false
+  };
+
+  const messageStr = JSON.stringify(wsMessage);
+
+  // Send to all participants in the conversation
+  conversationParticipants.forEach(participantId => {
+    // Don't send back to the sender
+    if (participantId !== message.senderId) {
+      const userConnection = userConnections.get(participantId);
+      if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+        userConnection.send(messageStr);
+        console.log(`Sent chat message to user ${participantId}`);
+      }
+    }
+  });
+};
+
+// Helper function to broadcast typing indicators
+const broadcastTypingIndicator = (conversationId: number, userId: number, isTyping: boolean, conversationParticipants: number[]) => {
+  const message: TypingIndicator = {
+    type: 'typing_indicator',
+    conversationId,
+    userId,
+    isTyping,
+    timestamp: new Date()
+  };
+
+  const messageStr = JSON.stringify(message);
+
+  // Send to all participants in the conversation except the typing user
+  conversationParticipants.forEach(participantId => {
+    if (participantId !== userId) {
+      const userConnection = userConnections.get(participantId);
+      if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+        userConnection.send(messageStr);
+      }
+    }
+  });
+};
+
+// Helper function to broadcast read receipts
+const broadcastReadReceipt = (conversationId: number, userId: number, lastReadMessageId: number, conversationParticipants: number[]) => {
+  const message: ReadReceipt = {
+    type: 'read_receipt',
+    conversationId,
+    userId,
+    lastReadMessageId,
+    timestamp: new Date()
+  };
+
+  const messageStr = JSON.stringify(message);
+
+  // Send to all participants in the conversation except the reading user
+  conversationParticipants.forEach(participantId => {
+    if (participantId !== userId) {
+      const userConnection = userConnections.get(participantId);
+      if (userConnection && userConnection.readyState === WebSocket.OPEN) {
+        userConnection.send(messageStr);
+      }
+    }
+  });
+};
+
+// Helper function to broadcast chat messages is already defined above
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Health check endpoint for Replit preview
+  app.get("/health", (req, res) => {
+    res.status(200).json({ 
+      status: "ok", 
+      timestamp: new Date().toISOString(),
+      service: "MyAmbulex",
+      port: process.env.PORT || 5000
+    });
+  });
+
+  // Authenticated static file serving for uploads directory
+  app.use("/uploads", (req, res, next) => {
+    // Check if user is authenticated using session directly
+    if (!req.session || !req.session.passport || !req.session.passport.user) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    
+    // Basic authorization - logged in users can access files
+    next();
+  }, express.static(path.join(process.cwd(), 'uploads')));
+  
+  // Serve document upload test page
+  app.get("/document-test", (req, res) => {
+    res.sendFile(path.join(__dirname, "../document-upload-test.html"));
+  });
+
+  // Driver onboarding routes
+  app.get("/api/drivers/pricing-settings", async (req, res) => {
+    try {
+      const pricingSettings = await storage.getPricingSettings();
+      res.json(pricingSettings);
+    } catch (error) {
+      console.error("Error fetching pricing settings:", error);
+      res.status(500).json({ message: "Error fetching pricing settings" });
+    }
+  });
+  // Test endpoint for login diagnosis
+  app.get("/api/test-auth", (req, res) => {
+    console.log("SESSION INFO:", {
+      isAuthenticated: req.isAuthenticated(),
+      sessionID: req.sessionID,
+      session: req.session,
+    });
+    res.json({
+      isAuthenticated: req.isAuthenticated(),
+      sessionID: req.sessionID
+    });
+  });
+
+  // Google Maps API Proxy endpoints
+  app.get('/api/maps/get-place-details', async (req, res) => {
+    try {
+      const { placeId } = req.query;
+
+      if (!placeId) {
+        return res.status(400).json({ error: 'Missing placeId parameter' });
+      }
+
+      // Use the working Google Maps API key
+      const googleMapsApiKey = process.env.VITE_GOOGLE_MAPS;
+      if (!googleMapsApiKey) {
+        console.error('Missing Google Maps API key - VITE_GOOGLE_MAPS not found');
+        return res.status(500).json({ error: 'Google Maps API configuration error' });
+      }
+      console.log('Using Google Maps API key (first 5 chars):', googleMapsApiKey.substring(0, 5) + '...');
+
+      // Make request to Google Maps Places API
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=address_component,formatted_address,geometry&key=${googleMapsApiKey}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Google Maps API responded with status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status !== 'OK') {
+        console.error('Google Maps API error:', data.status, data.error_message);
+        return res.status(500).json({ error: `Google Places API error: ${data.status}` });
+      }
+
+      // Return the address components and formatted address
+      res.json({
+        address_components: data.result.address_components,
+        formatted_address: data.result.formatted_address,
+        geometry: data.result.geometry
+      });
+    } catch (error) {
+      console.error('Error fetching place details:', error);
+      res.status(500).json({ error: 'Failed to fetch place details' });
+    }
+  });
+
+  // Authentication routes
+  await setupAuth(app);
+
+  // Configure multer for file uploads
+  const uploadDir = path.join(process.cwd(), 'uploads', 'documents');
+  
+  // Ensure upload directory exists
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const storage_multer = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      // Create unique filename with timestamp and original extension
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+    }
+  });
+
+  const upload = multer({
+    storage: storage_multer,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      // Allow common document and image formats
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/jpg',
+        'application/pdf',
+        'image/webp'
+      ];
+      
+      if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only JPEG, PNG, PDF, and WebP files are allowed.'));
+      }
+    }
+  });
+
+  // Document upload endpoint for driver registration
+  app.post("/api/documents/upload", isAuthenticated, upload.single('document'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      if (req.user!.role !== 'driver') {
+        return res.status(403).json({ message: "Only drivers can upload documents" });
+      }
+
+      const { documentType } = req.body;
+      
+      if (!documentType) {
+        return res.status(400).json({ message: "Document type is required" });
+      }
+
+      // Get the driver's details to get the driver ID
+      const driverDetails = await storage.getDriverDetails(req.user!.id);
+      if (!driverDetails) {
+        return res.status(404).json({ message: "Driver details not found" });
+      }
+
+      // Save document URL directly to driver details table
+      const fileUrl = `/uploads/documents/${req.file.filename}`;
+      
+      // Map document type to driver details field
+      const updateData: any = {};
+      switch (documentType) {
+        case 'license_front':
+        case 'licensePhotoFront':
+          updateData.licensePhotoFront = fileUrl;
+          break;
+        case 'license_back':
+        case 'licensePhotoBack':
+          updateData.licensePhotoBack = fileUrl;
+          break;
+        case 'insurance':
+        case 'insuranceDocument':
+          updateData.insuranceDocumentUrl = fileUrl;
+          break;
+        case 'vehicle_registration':
+        case 'vehicleRegistration':
+          updateData.vehicleRegistrationUrl = fileUrl;
+          break;
+        case 'background_check':
+        case 'backgroundCheck':
+          updateData.backgroundCheckDocumentUrl = fileUrl;
+          break;
+        case 'medical_certification':
+        case 'medicalCertification':
+        case 'certifications':
+          updateData.medicalCertificationUrl = fileUrl;
+          break;
+        case 'mvr_record':
+        case 'mvrRecord':
+          updateData.mvrRecordUrl = fileUrl;
+          break;
+        case 'drug_test':
+        case 'drugTest':
+        case 'drugTestResults':
+          updateData.drugTestResultsUrl = fileUrl;
+          break;
+        case 'profile_photo':
+        case 'profilePhoto':
+          updateData.profilePhoto = fileUrl;
+          break;
+        default:
+          updateData[`${documentType}Url`] = fileUrl;
+      }
+      
+      await storage.updateDriverDetails(req.user!.id, updateData);
+
+      res.json({
+        success: true,
+        fileName: req.file.filename,
+        originalName: req.file.originalname,
+        url: fileUrl,
+        documentType
+      });
+
+    } catch (error) {
+      console.error("Document upload error:", error);
+      res.status(500).json({ message: "Failed to upload document" });
+    }
+  });
+
+  // Get driver documents endpoint
+  app.get("/api/driver/documents", isAuthenticated, async (req, res) => {
+    try {
+      if (req.user!.role !== 'driver') {
+        return res.status(403).json({ message: "Only drivers can access their documents" });
+      }
+
+      const driverDetails = await storage.getDriverDetails(req.user!.id);
+      if (!driverDetails) {
+        return res.status(404).json({ message: "Driver details not found" });
+      }
+
+      console.log('Driver details profilePhoto field:', driverDetails.profilePhoto);
+
+      // Return relevant document fields
+      const documents = {
+        licensePhotoFront: driverDetails.licensePhotoFront,
+        licensePhotoBack: driverDetails.licensePhotoBack,
+        insuranceDocumentUrl: driverDetails.insuranceDocumentUrl,
+        vehicleRegistrationUrl: driverDetails.vehicleRegistrationUrl,
+        backgroundCheckDocumentUrl: driverDetails.backgroundCheckDocumentUrl,
+        medicalCertificationUrl: driverDetails.medicalCertificationUrl,
+        mvrRecordUrl: driverDetails.mvrRecordUrl,
+        drugTestResultsUrl: driverDetails.drugTestResultsUrl,
+        profilePhoto: driverDetails.profilePhoto,
+        // Verification statuses
+        license_verified: driverDetails.licenseVerified,
+        insurance_verified: driverDetails.insuranceVerified,
+        vehicle_verified: driverDetails.vehicleVerified,
+        medical_certification_verified: driverDetails.medicalCertificationVerified,
+        background_check_verified: driverDetails.backgroundCheckDocumentUrl ? true : false,
+        drug_test_verified: driverDetails.drugTestVerified,
+        mvr_record_verified: driverDetails.mvrRecordVerified,
+        profile_verified: driverDetails.profileVerified,
+      };
+
+      console.log('Documents object profilePhoto:', documents.profilePhoto);
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching driver documents:", error);
+      res.status(500).json({ message: "Failed to fetch documents" });
+    }
+  });
+
+  // Initialize the global registration progress object if it doesn't exist
+  if (!global.registrationProgress) {
+    global.registrationProgress = {};
+  }
+
+  // User profile update and account deletion endpoints
+  app.put("/api/user/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { username, ...otherData } = req.body;
+      
+      // Check if username is being changed and validate it
+      if (username) {
+        const currentUser = await storage.getUser(userId);
+        if (currentUser && currentUser.username !== username) {
+          // Check if username is already taken
+          const existingUser = await storage.getUserByUsername(username);
+          if (existingUser && existingUser.id !== userId) {
+            return res.status(400).json({ 
+              message: "Username already taken. Please choose a different username." 
+            });
+          }
+          
+          // Record the username change for tracking
+          await storage.recordUsernameChange(userId);
+        }
+      }
+      
+      const updatedUser = await storage.updateUser(userId, { username, ...otherData });
+      
+      if (updatedUser) {
+        res.json({ success: true, user: updatedUser });
+      } else {
+        res.status(404).json({ message: "User not found" });
+      }
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/user/delete-account", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Delete user and all associated data
+      const success = await storage.deleteUser(userId);
+      
+      if (success) {
+        // Clear the session
+        req.logout((err) => {
+          if (err) {
+            console.error("Error logging out:", err);
+          }
+        });
+        req.session.destroy((err) => {
+          if (err) {
+            console.error("Error destroying session:", err);
+          }
+        });
+        
+        res.json({ success: true, message: "Account successfully deleted" });
+      } else {
+        res.status(500).json({ message: "Failed to delete account" });
+      }
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Support ticket submission endpoint
+  app.post("/api/support/ticket", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { category, subject, message, priority } = req.body;
+      
+      // In a real implementation, you would save this to a support ticket system
+      // For now, we'll just send an email notification
+      await emailNotificationService.sendEmail({
+        to: 'support@myambulex.com',
+        subject: `Support Request: ${subject}`,
+        text: `
+          User ID: ${userId}
+          Category: ${category}
+          Priority: ${priority}
+          Subject: ${subject}
+          Message: ${message}
+        `,
+        html: `
+          <h3>New Support Request</h3>
+          <p><strong>User ID:</strong> ${userId}</p>
+          <p><strong>Category:</strong> ${category}</p>
+          <p><strong>Priority:</strong> ${priority}</p>
+          <p><strong>Subject:</strong> ${subject}</p>
+          <p><strong>Message:</strong></p>
+          <p>${message}</p>
+        `
+      });
+      
+      res.json({ success: true, message: "Support request submitted successfully" });
+    } catch (error) {
+      console.error("Error submitting support ticket:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Register modular routes - OLD ADMIN ROUTER MOVED TO LATER SECTION
+  // app.use('/api/admin', adminRouter); // DISABLED - causes route conflicts with new admin routers
+  app.use('/api/driver', driverRouter);
+  app.use('/api/drivers', driverOnboardingRouter);
+  // Add the driver onboarding progress API endpoint
+  app.use('/api/drivers/onboarding-progress', driverOnboardingProgressRouter);
+  app.use(driverDocumentsRouter);
+  app.use('/api/rider', riderRouter);
+  app.use('/api/rider/onboarding', riderOnboardingRouter);
+  app.use(userProfileRouter);
+  app.use(userProfileApiRouter); // Add new user profile API
+  app.use(authDiagnosticRouter); // Add auth diagnostic tools
+  app.use('/api/saved-addresses', savedAddressesRouter);
+  app.use('/api/payment', paymentRouter);
+  app.use(userSettingsRouter);
+  app.use('/api/recurring-appointments', recurringAppointmentsRouter);
+  app.use('/api/driver', driverAvailabilityRouter);
+  app.use('/api/driver/ride-filters', driverRideFiltersRouter);
+  app.use('/api/analytics', analyticsRouter);
+  app.use('/api/chat', chatRouter);
+  app.use('/api/promo-codes', isAuthenticated, promoCodesRouter);
+  app.use('/api/onboarding/notifications', onboardingNotificationsRoutes);
+  app.use("/api/email-notifications", emailNotificationsRoutes);
+  // Legal document routes - direct implementation
+  app.get('/api/legal/download/terms-of-service', (req, res) => {
+    console.log('Terms of Service requested');
+    const content = `MyAmbulex Terms of Service
+
+Last Updated: [DATE]
+
+1. Acceptance of Terms
+By using MyAmbulex ("Service"), you agree to these Terms of Service ("Terms"). If you disagree with any part, please discontinue use.
+
+2. Service Description
+MyAmbulex connects individuals needing medical transportation with qualified drivers through a competitive bidding platform.
+
+3. User Accounts
+- Eligibility: Must be 18+ and legally able to enter contracts
+- Registration: Provide accurate, current information
+- Security: Maintain confidentiality of login credentials
+- Verification: Complete identity and background verification as required
+
+4. User Conduct
+Users must not:
+- Violate laws or regulations
+- Harass, threaten, or discriminate against others
+- Provide false information or impersonate others
+- Interfere with platform operation or security
+- Use the service for unauthorized commercial purposes
+
+5. Medical Transportation Services
+- Platform facilitates connections; Company is not a medical transport provider
+- Drivers are independent contractors, not Company employees
+- Users assume responsibility for medical readiness to travel
+- Emergency medical situations require immediate contact with emergency services
+
+6. Payments and Fees
+- Riders: Pay agreed fare plus applicable fees
+- Drivers: Receive fare minus platform commission
+- Payment Processing: Handled by third-party providers
+- Refunds: Subject to cancellation policy
+
+7. Liability and Insurance
+- Platform users maintain appropriate insurance coverage
+- Company liability limited to maximum extent permitted by law
+- Users release Company from claims arising from transportation services
+
+8. Intellectual Property
+All platform content, trademarks, and technology remain Company property. Users grant license to use their content for service operation.
+
+9. Termination
+Company may suspend or terminate accounts for Terms violations. Users may close accounts with notice.
+
+10. Governing Law
+These Terms are governed by [STATE] law. Disputes resolved through arbitration.
+
+Contact: legal@myambulex.com`;
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'inline; filename="MyAmbulex_Terms_of_Service.txt"');
+    res.send(content);
+  });
+
+  app.get('/api/legal/download/privacy-policy', (req, res) => {
+    console.log('Privacy Policy requested');
+    const content = `MyAmbulex Privacy Policy
+
+Last Updated: [DATE]
+
+Information We Collect
+- Account Information: Name, email, phone number, medical transport requirements
+- Location Data: GPS coordinates during ride booking and execution
+- Payment Information: Processed securely through Stripe/PayPal (not stored locally)
+- Communication Data: Messages between riders and drivers
+- Usage Analytics: Platform interaction data for service improvement
+
+How We Use Information
+- Facilitate medical transportation services
+- Process payments and provide receipts
+- Ensure safety and security of all users
+- Improve platform functionality based on usage patterns
+- Comply with legal and regulatory requirements
+
+Information Sharing
+We do not sell personal information. We may share data with:
+- Service Providers: Payment processors, mapping services, email providers
+- Legal Requirements: When required by law or to protect safety
+- Business Transfers: In case of merger or acquisition (with notice)
+
+Data Security
+- End-to-end encryption for sensitive communications
+- Secure payment processing through certified providers
+- Regular security audits and penetration testing
+- Access controls limiting employee data access
+
+Your Rights
+- Access and download your personal data
+- Correct inaccurate information
+- Delete your account and associated data
+- Opt out of non-essential communications
+- Request data portability
+
+Contact Information
+Data Protection Officer: privacy@myambulex.com
+General Inquiries: support@myambulex.com`;
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'inline; filename="MyAmbulex_Privacy_Policy.txt"');
+    res.send(content);
+  });
+
+  app.get('/api/legal/download/driver-agreement', (req, res) => {
+    console.log('Driver Agreement requested');
+    const content = `MyAmbulex Driver Services Agreement
+
+Effective Date: [DATE]
+
+1. Independent Contractor Relationship
+Driver provides transportation services as an independent contractor, not as Company employee.
+
+2. Driver Requirements
+- Valid driver's license and vehicle registration
+- Current auto insurance meeting minimum requirements
+- Vehicle inspection and safety certification
+- Background check clearance
+- Medical transport training (preferred)
+
+3. Service Standards
+- Professional conduct and appearance
+- Punctuality and reliability
+- Vehicle cleanliness and maintenance
+- Assistance with mobility equipment as needed
+- Compliance with all traffic and transportation laws
+
+4. Platform Use
+- Accept rides through platform bidding system
+- Update availability and location accurately
+- Complete rides as agreed with riders
+- Use in-app communication for coordination
+
+5. Compensation
+- Receive percentage of ride fare as specified
+- Payment processed weekly via ACH transfer
+- Responsible for own tax obligations
+- May receive bonuses for exceptional service
+
+6. Vehicle and Equipment
+- Maintain vehicle in safe, clean condition
+- Provide required safety and accessibility equipment
+- Regular vehicle inspections as required
+- Insurance coverage meeting platform standards
+
+7. Termination
+Either party may terminate with notice. Company may terminate immediately for safety violations or Terms breaches.
+
+Driver Signature: _________________ Date: _________`;
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'inline; filename="MyAmbulex_Driver_Agreement.txt"');
+    res.send(content);
+  });
+
+  app.get('/api/legal/list', (req, res) => {
+    console.log('Legal document list requested');
+    res.json({
+      documents: [
+        { id: 'terms-of-service', filename: 'MyAmbulex_Terms_of_Service.txt', title: 'Terms of Service' },
+        { id: 'privacy-policy', filename: 'MyAmbulex_Privacy_Policy.txt', title: 'Privacy Policy' },
+        { id: 'driver-agreement', filename: 'MyAmbulex_Driver_Agreement.txt', title: 'Driver Agreement' }
+      ]
+    });
+  });
+
+  console.log('Legal document routes registered directly');
+  // Driver document status endpoint
+  app.get("/api/driver/document-status", isAuthenticated, async (req, res) => {
+    try {
+      if (req.user!.role !== 'driver') {
+        return res.status(403).json({ message: "Driver access required" });
+      }
+
+      const driverDetails = await storage.getDriverDetails(req.user!.id);
+      
+      if (!driverDetails) {
+        return res.status(404).json({ message: "Driver details not found" });
+      }
+
+      // Return document status information
+      const documentStatus = {
+        license: {
+          frontUrl: driverDetails.licensePhotoFront,
+          backUrl: driverDetails.licensePhotoBack,
+          isVerified: driverDetails.licenseVerified,
+          rejectionReason: driverDetails.licenseRejectionReason
+        },
+        insurance: {
+          url: driverDetails.insuranceDocumentUrl,
+          isVerified: driverDetails.insuranceVerified,
+          rejectionReason: driverDetails.insuranceRejectionReason
+        },
+        vehicle: {
+          url: driverDetails.vehicleRegistrationUrl,
+          isVerified: driverDetails.vehicleVerified,
+          rejectionReason: driverDetails.vehicleRejectionReason
+        },
+        profile: {
+          url: driverDetails.profilePhoto,
+          isVerified: driverDetails.profileVerified,
+          rejectionReason: driverDetails.profileRejectionReason
+        },
+        overallStatus: driverDetails.accountStatus,
+        verified: driverDetails.verified
+      };
+
+      res.json(documentStatus);
+    } catch (error) {
+      console.error("Error fetching document status:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.use("/api/testing", testingRouter);
+  app.use("/api/beta", betaManagementRouter);
+  // WebSocket diagnostic router removed - using polling only
+  console.log('Admin routes loaded successfully');
+  
+  // Import and use admin management routes
+  try {
+    const { default: adminManagementRoutes } = await import("./routes/admin-management.js");
+    const { default: betaInvitationsRouter } = await import("./routes/beta-invitations.js");
+    const { default: systemMetricsRoutes } = await import("./routes/system-metrics.js");
+    const { default: analyticsRoutes } = await import("./routes/analytics.js");
+    const { default: adminDocumentsRouter } = await import("./routes/admin-documents.js");
+    app.use("/api/admin", systemMetricsRoutes);
+    app.use("/api/admin", adminManagementRoutes);
+    app.use("/api/admin", adminDocumentsRouter);
+    app.use("/api/admin/beta-invitations", betaInvitationsRouter);
+    app.use("/api/admin/analytics", analyticsRoutes);
+    console.log("Admin routes loaded successfully");
+  } catch (error) {
+    console.log("Admin routes not available yet, will be loaded later");
+  }
+
+  // PayPal API routes
+  app.get("/api/paypal/setup", async (req, res) => {
+    await loadPaypalDefault(req, res);
+  });
+
+  app.post("/api/paypal/order", async (req, res) => {
+    // Request body should contain: { intent, amount, currency }
+    await createPaypalOrder(req, res);
+  });
+
+  app.post("/api/paypal/order/:orderID/capture", async (req, res) => {
+    await capturePaypalOrder(req, res);
+  });
+
+  // Automatic payment processing endpoints
+  app.post("/api/rides/:rideId/process-payment", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const rideId = parseInt(req.params.rideId);
+      if (isNaN(rideId)) {
+        return res.status(400).json({ error: "Invalid ride ID" });
+      }
+
+      const ride = await storage.getRide(rideId);
+      if (!ride) {
+        return res.status(404).json({ error: "Ride not found" });
+      }
+
+      // Only rider can process payment for their ride
+      if (ride.riderId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const result = await automaticPaymentService.processRidePayment(rideId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing ride payment:", error);
+      res.status(500).json({ error: "Failed to process payment" });
+    }
+  });
+
+  app.post("/api/rides/:rideId/retry-payment", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const rideId = parseInt(req.params.rideId);
+      if (isNaN(rideId)) {
+        return res.status(400).json({ error: "Invalid ride ID" });
+      }
+
+      const ride = await storage.getRide(rideId);
+      if (!ride) {
+        return res.status(404).json({ error: "Ride not found" });
+      }
+
+      // Only rider can retry payment for their ride
+      if (ride.riderId !== req.user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const result = await automaticPaymentService.retryPayment(rideId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error retrying payment:", error);
+      res.status(500).json({ error: "Failed to retry payment" });
+    }
+  });
+
+  // Counter-offer count endpoint for tracking bid limits
+  app.get("/api/bids/:bidId/counter-count", isAuthenticated, async (req, res) => {
+    try {
+      const bidId = parseInt(req.params.bidId);
+      if (isNaN(bidId)) {
+        return res.status(400).json({ error: "Invalid bid ID" });
+      }
+
+      const bid = await storage.getBid(bidId);
+      if (!bid) {
+        return res.status(404).json({ error: "Bid not found" });
+      }
+
+      // Get all bids in this counter-offer chain
+      const allBids = await storage.getBidsByRide(bid.rideId);
+      
+      // Count bids in the same chain (same parent or children)
+      const bidChain = allBids.filter(b => 
+        b.parentBidId === bidId || 
+        b.id === bidId || 
+        b.parentBidId === bid.parentBidId ||
+        (bid.parentBidId && b.id === bid.parentBidId)
+      );
+
+      const counterOfferCount = Math.max(0, bidChain.length - 1); // Subtract original bid
+
+      res.json({ 
+        counterOfferCount,
+        totalBidsInChain: bidChain.length,
+        maxAllowed: 3
+      });
+    } catch (error) {
+      console.error("Error getting counter-offer count:", error);
+      res.status(500).json({ error: "Failed to get counter-offer count" });
+    }
+  });
+
+  // Notification routes
+  app.get("/api/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const notifications = await notificationService.getNotificationsForUser(userId);
+      res.json(notifications || []); // Ensure we always return an array
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      const success = await notificationService.markAsRead(notificationId);
+
+      if (!success) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ message: "Failed to update notification" });
+    }
+  });
+
+  // Test endpoint to send a sample notification (for development)
+  app.post("/api/test-notification", isAuthenticated, async (req, res) => {
+    try {
+      const { type = "COUNTER_OFFER_RECEIVED" } = req.body;
+      const userId = req.user!.id;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Create a sample ride for the notification
+      const sampleRide = {
+        id: 999,
+        riderId: userId,
+        driverId: 2,
+        scheduledTime: new Date(Date.now() + 86400000), // Tomorrow
+        pickupAddress: "123 Main St, Anytown, USA",
+        dropoffAddress: "456 Park Ave, Anytown, USA",
+        status: "scheduled"
+      };
+
+      // Create a sample bid for counter-offer notifications
+      const sampleBid = {
+        id: 888,
+        rideId: 999,
+        driverId: 2,
+        amount: 45.50,
+        status: "pending",
+        notes: "Can provide door-to-door assistance",
+        counterParty: "driver"
+      };
+
+      // Sample driver for notifications
+      const sampleDriver = {
+        id: 2,
+        username: "driver1",
+        fullName: "Steve Driver",
+        email: "driver@example.com",
+        phone: "555-0200",
+        role: "driver"
+      };
+
+      // Handle different notification types
+      let success = false;
+      switch (type) {
+        case "RIDE_CANCELLED":
+          success = await notificationService.sendRideCancellationNotification(
+            sampleRide as any,
+            sampleDriver as any,
+            "Schedule conflict"
+          );
+          break;
+        case "COUNTER_OFFER_RECEIVED":
+          success = await notificationService.sendCounterOfferNotification(
+            sampleBid as any,
+            sampleDriver as any,
+            user,
+            sampleRide as any
+          );
+          break;
+        case "BID_ACCEPTED":
+          success = await notificationService.sendBidAcceptedNotification(
+            sampleBid as any,
+            sampleRide as any
+          );
+          break;
+        default:
+          return res.status(400).json({ message: "Unsupported notification type" });
+      }
+
+      if (success) {
+        res.json({ message: "Test notification sent successfully" });
+      } else {
+        res.status(500).json({ message: "Failed to send test notification" });
+      }
+    } catch (error) {
+      console.error("Error sending test notification:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Chat API routes
+  // Create a new conversation
+  app.post("/api/chat/conversations", isAuthenticated, async (req, res) => {
+    try {
+      const { rideId } = req.body;
+
+      if (!rideId) {
+        return res.status(400).json({ message: "Ride ID is required" });
+      }
+
+      // Check if the ride exists
+      const ride = await storage.getRide(Number(rideId));
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check if the user is the rider or driver of the ride
+      const userId = req.user!.id;
+      if (ride.riderId !== userId && ride.driverId !== userId) {
+        return res.status(403).json({ message: "You are not authorized to create a conversation for this ride" });
+      }
+
+      // Check if a conversation already exists for this ride
+      let conversation = await storage.getChatConversationByRide(Number(rideId));
+
+      if (conversation) {
+        return res.status(409).json({ 
+          message: "Conversation already exists for this ride",
+          conversation
+        });
+      }
+
+      // Create a new conversation
+      conversation = await storage.createChatConversation({
+        rideId: Number(rideId)
+      });
+
+      // Add the rider and driver as participants
+      const riderParticipant = await storage.addChatParticipant({
+        conversationId: conversation.id,
+        userId: ride.riderId
+      });
+
+      if (ride.driverId) {
+        const driverParticipant = await storage.addChatParticipant({
+          conversationId: conversation.id,
+          userId: ride.driverId
+        });
+      }
+
+      res.status(201).json(conversation);
+    } catch (error) {
+      console.error("Error creating chat conversation:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get all conversations for the authenticated user
+  app.get("/api/chat/conversations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const conversations = await storage.getUserChatConversations(userId);
+
+      // For each conversation, get the ride details and the other participant
+      const enhancedConversations = await Promise.all(
+        conversations.map(async (conversation) => {
+          const ride = await storage.getRide(conversation.rideId);
+          const participants = await storage.getChatParticipants(conversation.id);
+          const otherParticipantIds = participants
+            .filter(p => p.userId !== userId)
+            .map(p => p.userId);
+
+          const otherParticipants = await Promise.all(
+            otherParticipantIds.map(async (participantId) => {
+              const user = await storage.getUser(participantId);
+              return user ? {
+                id: user.id,
+                username: user.username,
+                fullName: user.fullName,
+                role: user.role,
+                avatar: user.avatar
+              } : null;
+            })
+          );
+
+          const unreadCount = await storage.getUnreadMessageCount(conversation.id, userId);
+
+          return {
+            ...conversation,
+            ride,
+            otherParticipants: otherParticipants.filter(Boolean),
+            unreadCount
+          };
+        })
+      );
+
+      res.json(enhancedConversations);
+    } catch (error) {
+      console.error("Error fetching user conversations:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get a specific conversation by ID
+  app.get("/api/chat/conversations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const conversationId = Number(req.params.id);
+      const userId = req.user!.id;
+
+      const conversation = await storage.getChatConversation(conversationId);
+
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      // Check if the user is a participant in the conversation
+      const participant = await storage.getChatParticipant(conversationId, userId);
+
+      if (!participant) {
+        return res.status(403).json({ message: "You are not authorized to view this conversation" });
+      }
+
+      // Get the ride details and other participants
+      const ride = await storage.getRide(conversation.rideId);
+      const participants = await storage.getChatParticipants(conversationId);
+      const otherParticipantIds = participants
+        .filter(p => p.userId !== userId)
+        .map(p => p.userId);
+
+      const otherParticipants = await Promise.all(
+        otherParticipantIds.map(async (participantId) => {
+          const user = await storage.getUser(participantId);
+          return user ? {
+            id: user.id,
+            username: user.username,
+            fullName: user.fullName,
+            role: user.role,
+            avatar: user.avatar
+          } : null;
+        })
+      );
+
+      res.json({
+        ...conversation,
+        ride,
+        otherParticipants: otherParticipants.filter(Boolean)
+      });
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get messages for a conversation
+  app.get("/api/chat/conversations/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const conversationId = Number(req.params.id);
+      const userId = req.user!.id;
+      const { limit = "50", before } = req.query;
+
+      // Check if the user is a participant in the conversation
+      const participant = await storage.getChatParticipant(conversationId, userId);
+
+      if (!participant) {
+        return res.status(403).json({ message: "You are not authorized to view this conversation" });
+      }
+
+      // Get the messages
+      const messages = await storage.getChatMessages(
+        conversationId, 
+        Number(limit), 
+        before ? Number(before) : undefined
+      );
+
+      // Get the sender details for each message
+      const enhancedMessages = await Promise.all(
+        messages.map(async (message) => {
+          const sender = await storage.getUser(message.senderId);
+          return {
+            ...message,
+            sender: sender ? {
+              id: sender.id,
+              username: sender.username,
+              fullName: sender.fullName,
+              role: sender.role,
+              avatar: sender.avatar
+            } : null
+          };
+        })
+      );
+
+      res.json(enhancedMessages);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Send a message in a conversation
+  app.post("/api/chat/conversations/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const conversationId = Number(req.params.id);
+      const senderId = req.user!.id;
+      const { content, attachmentUrl, attachmentType, isSystemMessage = false } = req.body;
+
+      if (!content && !attachmentUrl) {
+        return res.status(400).json({ message: "Message content or attachment is required" });
+      }
+
+      // Check if the conversation exists
+      const conversation = await storage.getChatConversation(conversationId);
+
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      // Check if the user is a participant in the conversation
+      const participant = await storage.getChatParticipant(conversationId, senderId);
+
+      if (!participant) {
+        return res.status(403).json({ message: "You are not authorized to send messages in this conversation" });
+      }
+
+      // Create the message
+      const message = await storage.createChatMessage({
+        conversationId,
+        senderId,
+        content: content || '',
+        attachmentUrl: attachmentUrl || null,
+        attachmentType: attachmentType || null,
+        isSystemMessage
+      });
+
+      // Get all participants for notifications
+      const participants = await storage.getChatParticipants(conversationId);
+      const recipientIds = participants
+        .filter(p => p.userId !== senderId)
+        .map(p => p.userId);
+
+      // Send notifications to all other participants
+      for (const recipientId of recipientIds) {
+        const notification = await notificationService.sendChatMessageNotification(
+          message,
+          req.user!,
+          recipientId
+        );
+
+        // Broadcast the notification via WebSocket
+        if (notification) {
+          broadcastNotification(recipientId, notification);
+        }
+      }
+
+      // Broadcast the message via WebSocket
+      broadcastChatMessage(message, participants.map(p => p.userId));
+
+      // Update the conversation's updatedAt timestamp by updating the conversation
+      // This will be handled via the storage method instead of direct DB access
+      const updatedConversation = await storage.getChatConversation(conversationId);
+      if (updatedConversation) {
+        // The action of fetching and sending the message will effectively mark the conversation as active
+        console.log(`Updated conversation ${conversationId} activity timestamp`);
+      }
+
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Mark messages as read in a conversation
+  app.post("/api/chat/conversations/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const conversationId = Number(req.params.id);
+      const userId = req.user!.id;
+      const { messageId } = req.body;
+
+      if (!messageId) {
+        return res.status(400).json({ message: "Last read message ID is required" });
+      }
+
+      // Check if the user is a participant in the conversation
+      const participant = await storage.getChatParticipant(conversationId, userId);
+
+      if (!participant) {
+        return res.status(403).json({ message: "You are not authorized to access this conversation" });
+      }
+
+      // Update the participant's last read timestamp
+      const updatedParticipant = await storage.updateChatParticipantLastRead(
+        conversationId,
+        userId,
+        Number(messageId)
+      );
+
+      if (!updatedParticipant) {
+        return res.status(500).json({ message: "Failed to update read status" });
+      }
+
+      // Get all participants for WebSocket notification
+      const participants = await storage.getChatParticipants(conversationId);
+
+      // Broadcast read receipt via WebSocket
+      broadcastReadReceipt(
+        conversationId,
+        userId,
+        Number(messageId),
+        participants.map(p => p.userId)
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get user by ID - accessible to drivers and riders who need to see counterparty info
+  app.get("/api/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const requestedUser = await storage.getUser(userId);
+
+      if (!requestedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Only allow access to:
+      // 1. Admin users
+      // 2. The user themselves
+      // 3. Drivers/riders who need to communicate with each other
+      const user = req.user!;
+
+      // Remove sensitive information before sending
+      const safeUser = {
+        id: requestedUser.id,
+        username: requestedUser.username,
+        fullName: requestedUser.fullName,
+        email: requestedUser.email,
+        phone: requestedUser.phone,
+        role: requestedUser.role,
+        // Strip out password and other sensitive fields
+      };
+
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // User profile routes
+  app.post("/api/user-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      let profile = await storage.getUserProfile(userId);
+
+      if (profile) {
+        profile = await storage.updateUserProfile(userId, req.body);
+        res.json(profile);
+      } else {
+        const data = insertUserProfileSchema.parse({ ...req.body, userId });
+        profile = await storage.createUserProfile(data);
+        res.status(201).json(profile);
+      }
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.get("/api/user-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const profile = await storage.getUserProfile(userId);
+
+      if (!profile) {
+        return res.status(404).json({ message: "Profile not found" });
+      }
+
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Driver details routes
+  app.post("/api/driver-details", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      let driverDetails = await storage.getDriverDetails(userId);
+
+      if (driverDetails) {
+        try {
+          // Filter out any fields that aren't in our database schema
+          const filteredData = { ...req.body };
+
+          // Remove fields that don't exist in our database schema
+          delete filteredData.registrationStep;
+          delete filteredData.registrationData;
+          delete filteredData.vehicleData;
+          delete filteredData.lastSaved;
+          delete filteredData.accountStatus;
+
+          // Properly handle date fields - convert string dates to Date objects
+          if (filteredData.licenseExpiry && typeof filteredData.licenseExpiry === 'string') {
+            filteredData.licenseExpiry = new Date(filteredData.licenseExpiry);
+          }
+
+          if (filteredData.insuranceExpiry && typeof filteredData.insuranceExpiry === 'string') {
+            filteredData.insuranceExpiry = new Date(filteredData.insuranceExpiry);
+          }
+
+          if (filteredData.backgroundCheckDate && typeof filteredData.backgroundCheckDate === 'string') {
+            filteredData.backgroundCheckDate = new Date(filteredData.backgroundCheckDate);
+          }
+
+          console.log("Updating driver details with:", JSON.stringify(filteredData, null, 2));
+          driverDetails = await storage.updateDriverDetails(userId, filteredData);
+          res.json(driverDetails);
+        } catch (err) {
+          console.error("Error updating driver details:", err);
+          return res.status(400).json({ message: err instanceof Error ? err.message : "Invalid request" });
+        }
+      } else {
+        try {
+          // Filter out any fields that aren't in our database schema
+          const filteredData = { ...req.body };
+
+          // Remove fields that don't exist in our database schema
+          delete filteredData.registrationStep;
+          delete filteredData.registrationData;
+          delete filteredData.vehicleData;
+          delete filteredData.lastSaved;
+          
+          // Set default account status if not provided
+          if (!filteredData.accountStatus) {
+            filteredData.accountStatus = 'pending';
+          }
+
+          // Properly handle date fields - convert string dates to Date objects
+          if (filteredData.licenseExpiry && typeof filteredData.licenseExpiry === 'string') {
+            filteredData.licenseExpiry = new Date(filteredData.licenseExpiry);
+          }
+
+          if (filteredData.insuranceExpiry && typeof filteredData.insuranceExpiry === 'string') {
+            filteredData.insuranceExpiry = new Date(filteredData.insuranceExpiry);
+          }
+
+          if (filteredData.backgroundCheckDate && typeof filteredData.backgroundCheckDate === 'string') {
+            filteredData.backgroundCheckDate = new Date(filteredData.backgroundCheckDate);
+          }
+
+          // Log input data extensively for debugging
+          console.log("Creating driver details with:", JSON.stringify(filteredData, null, 2));
+          console.log("License expiry type:", typeof filteredData.licenseExpiry);
+          console.log("License expiry value:", filteredData.licenseExpiry);
+          console.log("Insurance expiry type:", typeof filteredData.insuranceExpiry);
+          console.log("Insurance expiry value:", filteredData.insuranceExpiry);
+
+          // Try the schema validation with explicit data
+          const formData = { ...filteredData, userId };
+          
+          console.log("=== DRIVER DETAILS DEBUG ===");
+          console.log("Raw request body:", JSON.stringify(req.body, null, 2));
+          console.log("Filtered data:", JSON.stringify(filteredData, null, 2));
+          console.log("Form data with userId:", JSON.stringify(formData, null, 2));
+          
+          const data = insertDriverDetailsSchema.parse(formData);
+
+          console.log("Parsed data:", JSON.stringify(data, null, 2));
+          driverDetails = await storage.createDriverDetails(data);
+          res.status(201).json(driverDetails);
+        } catch (err) {
+          console.error("Error creating driver details:", err);
+          
+          // Provide detailed error information
+          if (err instanceof Error) {
+            console.error("Error name:", err.name);
+            console.error("Error message:", err.message);
+            console.error("Error stack:", err.stack);
+            
+            // If it's a Zod validation error, provide detailed field information
+            if (err.name === 'ZodError') {
+              console.error("Zod validation errors:", JSON.stringify((err as any).errors, null, 2));
+              return res.status(400).json({ 
+                message: "Validation failed", 
+                errors: (err as any).errors,
+                details: err.message
+              });
+            }
+          }
+          
+          return res.status(400).json({ message: err instanceof Error ? err.message : "Invalid request" });
+        }
+      }
+    } catch (error) {
+      console.error("Driver details API error:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.get("/api/driver-details", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const driverDetails = await storage.getDriverDetails(userId);
+
+      if (!driverDetails) {
+        return res.status(404).json({ message: "Driver details not found" });
+      }
+
+      res.json(driverDetails);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Vehicle routes
+  app.post("/api/vehicles", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      console.log("Received vehicle submission:", req.body);
+
+      // First get driver details to get the driver's ID
+      const userId = req.user!.id;
+      console.log("User ID:", userId);
+
+      const driverDetails = await storage.getDriverDetails(userId);
+      console.log("Driver details:", driverDetails);
+
+      if (!driverDetails) {
+        console.error("Driver details not found for user ID:", userId);
+        return res.status(404).json({ message: "Driver details not found" });
+      }
+
+      // Parse and validate the data
+      try {
+        const data = insertVehicleSchema.parse({ ...req.body, driverId: driverDetails.id });
+        console.log("Validated vehicle data:", data);
+
+        const vehicle = await storage.createVehicle(data);
+        console.log("Vehicle created successfully:", vehicle);
+
+        res.status(201).json(vehicle);
+      } catch (parseError) {
+        console.error("Vehicle data validation error:", parseError);
+        res.status(400).json({ 
+          message: "Invalid vehicle data", 
+          details: parseError instanceof Error ? parseError.message : "Unknown validation error" 
+        });
+      }
+    } catch (error) {
+      console.error("Error creating vehicle:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Server error" });
+    }
+  });
+
+  app.get("/api/vehicles", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const driverDetails = await storage.getDriverDetails(userId);
+
+      if (!driverDetails) {
+        return res.status(404).json({ message: "Driver details not found" });
+      }
+
+      const vehicles = await storage.getVehiclesByDriver(driverDetails.id);
+      res.json(vehicles);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Ride routes
+  app.post("/api/rides", isAuthenticated, hasRole("rider"), async (req, res) => {
+    try {
+      const riderId = req.user!.id;
+      console.log("Received ride request:", req.body);
+
+      // Process the request body for coordinate mapping and handle all possible formats
+      const requestData = { ...req.body };
+
+      // Store coordinates in lat/lng fields if they're provided in any format
+      if (requestData.pickupCoordinates) {
+        requestData.pickupLocationLat = requestData.pickupCoordinates.latitude || 
+                                       requestData.pickupCoordinates.lat || 
+                                       (typeof requestData.pickupCoordinates === 'object' ? 
+                                        Object.values(requestData.pickupCoordinates)[0] : null);
+
+        requestData.pickupLocationLng = requestData.pickupCoordinates.longitude || 
+                                       requestData.pickupCoordinates.lng || 
+                                       (typeof requestData.pickupCoordinates === 'object' ? 
+                                        Object.values(requestData.pickupCoordinates)[1] : null);
+
+        delete requestData.pickupCoordinates;
+      }
+
+      if (requestData.dropoffCoordinates) {
+        requestData.dropoffLocationLat = requestData.dropoffCoordinates.latitude || 
+                                        requestData.dropoffCoordinates.lat || 
+                                        (typeof requestData.dropoffCoordinates === 'object' ? 
+                                         Object.values(requestData.dropoffCoordinates)[0] : null);
+
+        requestData.dropoffLocationLng = requestData.dropoffCoordinates.longitude || 
+                                        requestData.dropoffCoordinates.lng ||
+                                        (typeof requestData.dropoffCoordinates === 'object' ? 
+                                         Object.values(requestData.dropoffCoordinates)[1] : null);
+
+        delete requestData.dropoffCoordinates;
+      }
+
+      // Handle date formatting
+      if (requestData.scheduledTime && typeof requestData.scheduledTime === 'string') {
+        requestData.scheduledTime = new Date(requestData.scheduledTime);
+      }
+
+      if (requestData.returnTime && typeof requestData.returnTime === 'string') {
+        requestData.returnTime = new Date(requestData.returnTime);
+      }
+
+      // Generate a reference number for the ride
+      const timestamp = new Date().getTime().toString().slice(-6);
+      const riderFirst = req.user!.fullName ? req.user!.fullName.charAt(0).toUpperCase() : 'R';
+      const referenceNumber = `MA-${timestamp}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      // Clean up any extra fields that aren't in our schema
+      delete requestData.routeDistance;
+      delete requestData.routeDuration;
+
+      // Validate distance if provided
+      if (requestData.estimatedDistance) {
+        const distance = parseFloat(requestData.estimatedDistance);
+        if (distance > 500 || distance < 0.1 || isNaN(distance)) {
+          console.error("Invalid distance received:", requestData.estimatedDistance);
+          return res.status(400).json({ 
+            message: "Invalid distance. Distance must be between 0.1 and 500 miles." 
+          });
+        }
+      }
+
+      // Build the ride data with required fields
+      const rideData = {
+        ...requestData,
+        riderId,
+        status: "requested",
+        referenceNumber,
+        // Set explicit defaults for false values that might be undefined
+        isRoundTrip: requestData.isRoundTrip === true,
+        needsRamp: requestData.needsRamp === true,
+        needsCompanion: requestData.needsCompanion === true,
+        needsStairChair: requestData.needsStairChair === true,
+        needsWaitTime: requestData.needsWaitTime === true,
+        waitTimeMinutes: requestData.waitTimeMinutes || 0,
+      };
+
+      console.log("Preparing ride data:", rideData);
+
+      try {
+        // Schema validation handles date conversion and validation
+        const data = insertRideSchema.parse(rideData);
+
+        // Create the ride
+        const ride = await storage.createRide(data);
+        console.log("Created ride:", ride);
+
+        // Updated onboarding progress for first-time riders
+        try {
+          const onboardingProgress = await storage.getRiderOnboardingProgress(riderId);
+          if (onboardingProgress && !onboardingProgress.isFirstRide) {
+            await storage.updateRiderOnboardingProgress(riderId, { 
+              isFirstRide: true
+            });
+          }
+        } catch (err) {
+          // Don't fail ride creation if updating onboarding progress fails
+          console.error("Error updating onboarding progress:", err);
+        }
+
+        res.status(201).json(ride);
+      } catch (parseError) {
+        console.error("Ride data validation error:", parseError);
+        res.status(400).json({ 
+          message: "Invalid ride data", 
+          details: parseError instanceof Error ? parseError.message : String(parseError) 
+        });
+      }
+    } catch (error) {
+      console.error("Ride creation error:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.get("/api/rides", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user!;
+      
+      // Use optimized query to improve performance from 1+ seconds to <200ms
+      const rides = await optimizedStorage.getRidesForUser(user.id, user.role, 20);
+      
+      res.json(rides);
+    } catch (error) {
+      console.error("Error fetching rides:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/rides/:id", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.id);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        console.log(`Ride not found: ID ${rideId}`);
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check permissions - allow access to:
+      // 1. Admin users
+      // 2. The rider who created the ride
+      // 3. The assigned driver (if any)
+      // 4. Any driver who wants to view available rides
+      const user = req.user!;
+
+      console.log(`Checking ride access permissions:`, {
+        userId: user.id,
+        userRole: user.role,
+        rideId: ride.id,
+        riderId: ride.riderId,
+        driverId: ride.driverId
+      });
+
+      const canAccess = 
+        user.role === "admin" || 
+        ride.riderId === user.id || 
+        ride.driverId === user.id || 
+        user.role === "driver";
+
+      if (!canAccess) {
+        console.log(`Access denied for user ${user.id} (${user.role}) to ride ${rideId}`);
+        return res.status(403).json({ message: "Forbidden: You don't have permission to access this ride" });
+      }
+
+      console.log(`Access granted for user ${user.id} to ride ${rideId}`);
+      res.json(ride);
+    } catch (error) {
+      console.error("Error getting ride:", error);
+      res.status(500).json({ message: "Server error", error: String(error) });
+    }
+  });
+
+  // Delete ride route - only riders who created the ride or admins can delete rides
+  app.delete("/api/rides/:id", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.id);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check permissions - only allow:
+      // 1. Admin users
+      // 2. The rider who created the ride
+      const user = req.user!;
+      const canDelete = 
+        user.role === "admin" || 
+        ride.riderId === user.id;
+
+      if (!canDelete) {
+        return res.status(403).json({ message: "Forbidden - Only the rider who created this ride or an admin can delete it" });
+      }
+
+      // Only allow deletion for rides in 'requested', 'bidding', or 'scheduled' status
+      if (!["requested", "bidding", "scheduled"].includes(ride.status)) {
+        return res.status(400).json({ 
+          message: "Cannot delete a ride that is in progress or completed"
+        });
+      }
+
+      // Check if this is a late cancellation (within 24 hours of scheduled time) for scheduled rides
+      let isLateCancellation = false;
+      if (ride.status === "scheduled") {
+        const scheduledTime = new Date(ride.scheduledTime);
+        const now = new Date();
+        const timeDiffMs = scheduledTime.getTime() - now.getTime();
+        const hoursBeforeRide = timeDiffMs / (1000 * 60 * 60);
+
+        isLateCancellation = hoursBeforeRide < 24;
+      }
+
+      // Consider who is cancelling the ride (rider or driver)
+      const userRole = req.user!.role;
+      let cancellationMessage = "Ride successfully deleted";
+
+      if (ride.status === "scheduled" && isLateCancellation) {
+        if (userRole === "rider") {
+          cancellationMessage = "Ride cancelled. A $25 late cancellation fee may apply as you cancelled within 24 hours of the scheduled time.";
+        } else if (userRole === "driver") {
+          cancellationMessage = "Ride cancelled. Please note that cancelling rides within 24 hours of the scheduled time will affect your driver rating and available ride opportunities.";
+        }
+      }
+
+      // Send notification to the counterparty if this is a scheduled ride
+      if (ride.status === "scheduled") {
+        // Only send notifications for rides that have been matched with a driver
+        if (ride.driverId) {
+          // Send cancellation notification
+          await notificationService.sendRideCancellationNotification(
+            ride,
+            req.user!,
+            isLateCancellation ? "Cancelled within 24 hours of scheduled time." : undefined
+          );
+        }
+      }
+
+      const success = await storage.deleteRide(rideId);
+
+      if (success) {
+        res.status(200).json({ 
+          message: cancellationMessage,
+          isLateCancellation: isLateCancellation
+        });
+      } else {
+        res.status(500).json({ message: "Failed to delete ride" });
+      }
+    } catch (error) {
+      console.error("Error deleting ride:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/ride-requests", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const driverId = req.user?.id;
+      if (!driverId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // Get all active ride requests
+      const allRideRequests = await storage.getActiveRideRequests();
+      
+      // Get hidden rides for this driver
+      const hiddenRides = await storage.getHiddenRidesForDriver(driverId);
+      const hiddenRideIds = new Set(hiddenRides.map(hr => hr.rideId));
+      
+      // Filter out hidden rides
+      const filteredRideRequests = allRideRequests.filter(ride => !hiddenRideIds.has(ride.id));
+      
+      res.json(filteredRideRequests);
+    } catch (error) {
+      console.error("Error fetching ride requests:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Driver hide ride endpoint
+  app.post("/api/driver/hide-ride/:id", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.id);
+      const driverId = req.user?.id;
+
+      if (!driverId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // Hide the ride for this driver
+      await storage.hideRideForDriver(driverId, rideId);
+
+      res.json({ success: true, message: "Ride hidden successfully" });
+    } catch (error) {
+      console.error("Error hiding ride:", error);
+      res.status(500).json({ message: "Error hiding ride" });
+    }
+  });
+
+  // Ride status update endpoint
+  app.patch("/api/rides/:id", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.id);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Only allow updates by:
+      // 1. Admin users
+      // 2. The assigned driver
+      // 3. The rider who created the ride
+      const user = req.user!;
+      const canUpdate = 
+        user.role === "admin" || 
+        (ride.driverId && ride.driverId === user.id) ||
+        ride.riderId === user.id;
+
+      if (!canUpdate) {
+        return res.status(403).json({ message: "Unauthorized to update this ride" });
+      }
+
+      const { status, ...otherUpdates } = req.body;
+
+      // Handle specific status transitions
+      if (status) {
+        // Define allowed status transitions based on role and current status
+        const allowedTransitions: Record<string, Record<string, string[]>> = {
+          admin: {
+            // Admin can change any status to any other status
+            requested: ["bidding", "scheduled", "paid", "en_route", "arrived", "in_progress", "completed", "cancelled"],
+            bidding: ["requested", "scheduled", "paid", "en_route", "arrived", "in_progress", "completed", "cancelled"],
+            scheduled: ["requested", "bidding", "paid", "en_route", "arrived", "in_progress", "completed", "cancelled"],
+            paid: ["scheduled", "en_route", "arrived", "in_progress", "completed", "cancelled"],
+            en_route: ["scheduled", "paid", "arrived", "in_progress", "completed", "cancelled"],
+            arrived: ["en_route", "in_progress", "completed", "cancelled"],
+            in_progress: ["arrived", "completed", "cancelled"],
+            completed: ["in_progress"],
+            cancelled: []
+          },
+          driver: {
+            // Drivers can't modify rides before they're assigned
+            requested: [],
+            bidding: [],
+            // Once assigned, drivers can move the ride through its lifecycle
+            scheduled: ["en_route", "cancelled"],
+            paid: ["en_route", "cancelled"],
+            en_route: ["arrived", "cancelled"],
+            arrived: ["in_progress", "cancelled"],
+            in_progress: ["completed", "cancelled"],
+            completed: [],
+            cancelled: []
+          },
+          rider: {
+            // Riders can cancel their rides at any point before completion
+            requested: ["cancelled"],
+            bidding: ["cancelled"],
+            scheduled: ["cancelled"],
+            paid: ["cancelled"],
+            en_route: ["cancelled"],
+            arrived: ["cancelled"],
+            in_progress: ["cancelled"],
+            completed: [],
+            cancelled: []
+          }
+        };
+
+        const roleForTransitions = user.role === "admin" ? "admin" : 
+                                  (ride.driverId && ride.driverId === user.id) ? "driver" : "rider";
+
+        // Check if the requested status transition is allowed
+        if (!allowedTransitions[roleForTransitions][ride.status].includes(status)) {
+          return res.status(400).json({ 
+            message: `Cannot transition ride from '${ride.status}' to '${status}' with your permissions`
+          });
+        }
+      }
+
+      // Status transition messages
+      let statusMessage = "";
+      if (status) {
+        const statusMessages: Record<string, string> = {
+          en_route: "Driver is en route to pickup location.",
+          arrived: "Driver has arrived at pickup location.",
+          in_progress: "Ride is now in progress.",
+          completed: "Ride has been completed.",
+          cancelled: "Ride has been cancelled."
+        };
+        statusMessage = statusMessages[status] || `Status updated to ${status}`;
+      }
+
+      // Save previous status for notification
+      const previousStatus = ride.status;
+
+      // Handle special case for en_route status (Driver ETA)
+      let etaMinutes: number | undefined = undefined;
+      if (status === "en_route" && req.user!.role === "driver") {
+        // Check if driver provided an ETA in minutes
+        if (req.body.estimatedPickupMinutes) {
+          etaMinutes = parseInt(req.body.estimatedPickupMinutes);
+        } 
+        // Or if they provided an estimated arrival time
+        else if (req.body.estimatedArrivalTime) {
+          const arrivalTime = new Date(req.body.estimatedArrivalTime);
+          const now = new Date();
+          const diffMs = arrivalTime.getTime() - now.getTime();
+          etaMinutes = Math.round(diffMs / 60000); // Convert ms to minutes
+        }
+
+        // Add ETA information to the ride record
+        if (etaMinutes) {
+          req.body.estimatedPickupMinutes = etaMinutes;
+        }
+      }
+
+      // Update the ride
+      const updatedRide = await storage.updateRide(rideId, req.body);
+
+      // Log the status change
+      if (status && previousStatus !== status) {
+        console.log(`Ride ${rideId} status updated from ${previousStatus} to ${status} by ${req.user!.username}`);
+
+        // Special handling for en_route status when driver is updating
+        if (status === "en_route" && req.user!.role === "driver") {
+          try {
+            // Send ETA notification with the driver's estimated arrival time
+            await notificationService.sendDriverETANotification(
+              updatedRide!,
+              req.user!,
+              etaMinutes
+            );
+
+            // Also send the standard status update notification
+            const notification = await notificationService.sendRideStatusUpdateNotification(
+              updatedRide!,
+              previousStatus,
+              status,
+              req.user!
+            );
+
+            // Broadcast the status change through WebSockets
+            broadcastRideStatusUpdate(updatedRide!, previousStatus, status, req.user!);
+
+            // If notification was created, also broadcast it to relevant users
+            if (notification) {
+              const notifyUsers = [updatedRide!.riderId];
+              if (updatedRide!.driverId) {
+                notifyUsers.push(updatedRide!.driverId);
+              }
+            }
+          } catch (error) {
+            console.error("Error sending ETA notification:", error);
+            // Continue even if notification fails
+          }
+        } else {
+          // Standard notification for other status changes
+          try {
+            const notification = await notificationService.sendRideStatusUpdateNotification(
+              updatedRide!,
+              previousStatus,
+              status,
+              req.user!
+            );
+
+            // Broadcast the status change through WebSockets
+            broadcastRideStatusUpdate(updatedRide!, previousStatus, status, req.user!);
+
+            // If notification was created, also broadcast it to relevant users
+            if (notification) {
+              const notifyUsers = [updatedRide!.riderId];
+              if (updatedRide!.driverId) {
+                notifyUsers.push(updatedRide!.driverId);
+              }
+            }
+          } catch (error) {
+            console.error("Error sending status notification:", error);
+            // Continue even if notification fails
+          }
+        }
+      } else {
+        // Just broadcast the update without status change notifications
+        broadcastRideStatusUpdate(updatedRide!, previousStatus, status || previousStatus, req.user!);
+      }
+
+      res.json({
+        message: statusMessage,
+        ride: updatedRide
+      });
+    } catch (error) {
+      console.error("Error updating ride:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Bid routes
+  app.post("/api/bids", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const driverId = req.user!.id;
+      
+      // Check if driver has permission to bid on rides
+      const rideId = Number(req.body.rideId);
+      if (isNaN(rideId)) {
+        return res.status(400).json({ message: "Invalid ride ID" });
+      }
+      
+      const permissionCheck = await driverPermissionsService.canBidOnRide(driverId, rideId);
+      if (!permissionCheck.allowed) {
+        return res.status(403).json({ 
+          message: permissionCheck.reason,
+          missingRequirements: permissionCheck.missingRequirements 
+        });
+      }
+      
+      const data = insertBidSchema.parse({ ...req.body, driverId, status: "pending" });
+      const amount = Number(data.amount);
+
+      // Check if the ride exists and is in a valid state for bidding
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      if (ride.status !== "requested" && ride.status !== "bidding") {
+        return res.status(400).json({ message: "Ride is not available for bidding" });
+      }
+
+      // Validate bid amount against rider's bid if available
+      if (ride.riderBid) {
+        // Driver's initial bid can't be more than 30% lower than rider's bid
+        const minAmount = ride.riderBid * 0.7;
+        if (amount < minAmount) {
+          return res.status(400).json({
+            message: `Bid amount must be at least $${minAmount.toFixed(2)} (70% of rider's bid)`
+          });
+        }
+
+        // Driver's initial bid can't be more than 30% higher than rider's bid
+        const maxAmount = ride.riderBid * 1.3;
+        if (amount > maxAmount) {
+          return res.status(400).json({
+            message: `Bid amount cannot be higher than $${maxAmount.toFixed(2)} (130% of rider's bid)`
+          });
+        }
+      }
+
+      // Get the driver details for notifications
+      const driver = await storage.getUser(driverId);
+      if (!driver) {
+        return res.status(404).json({ message: "Driver not found" });
+      }
+
+      // Update ride status to bidding if it's still in requested state
+      if (ride.status === "requested") {
+        await storage.updateRide(ride.id, { status: "bidding" });
+      }
+
+      try {
+        // Create the bid with enhanced ETA information
+        const bid = await storage.createBid(data);
+
+        // Check how many bids are now on this ride
+        const rideBids = await storage.getBidsByRide(rideId);
+        const pendingBids = rideBids.filter(b => b.status === "pending");
+
+        // Get the rider for notifications
+        const rider = await storage.getUser(ride.riderId);
+        if (!rider) {
+          return res.status(201).json(bid); // Still return success even if notification fails
+        }
+
+        // Notify the rider about the new bid
+        if (pendingBids.length === 1) {
+          // First bid on this ride
+          await notificationService.createAndSendNotification({
+            userId: rider.id,
+            type: NotificationType.NEW_BID,
+            title: "New Bid Received",
+            message: `Driver ${driver.username} has placed a bid of $${bid.amount.toFixed(2)} on your ride.`,
+            link: `/rider/rides/${ride.id}`
+          });
+        } else if (pendingBids.length > 1) {
+          // Multiple bids - send a different notification
+          await notificationService.sendMultipleBidsNotification(
+            ride,
+            pendingBids.length
+          );
+        }
+
+        res.status(201).json(bid);
+      } catch (error) {
+        // Check for the specific error we throw when driver already placed a bid
+        if (error instanceof Error && error.message.includes("already placed a bid")) {
+          return res.status(400).json({ message: error.message });
+        }
+        throw error; // Re-throw other errors
+      }
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.get("/api/bids/ride/:rideId", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.rideId);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check permissions
+      const user = req.user!;
+      if (user.role !== "admin" && ride.riderId !== user.id && user.role !== "driver") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const bids = await storage.getBidsByRide(rideId);
+      res.json(bids);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/bids/driver", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const driverId = req.user!.id;
+      console.log(`Fetching bids for driver ${driverId}...`);
+      const bids = await storage.getBidsByDriver(driverId);
+      console.log(`Successfully fetched ${bids.length} bids for driver ${driverId}`);
+      res.json(bids || []);
+    } catch (error) {
+      console.error("Error fetching driver bids:", error);
+      res.status(500).json({ message: "Server error", error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  // Ride edit endpoints
+
+  // Create a ride edit request (rider-only)
+  app.post("/api/rides/:rideId/edit", isAuthenticated, hasRole("rider"), async (req, res) => {
+    try {
+      console.log("Starting ride edit request with body:", JSON.stringify(req.body, null, 2));
+
+      const rideId = parseInt(req.params.rideId);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check if the user is the rider for this ride
+      if (ride.riderId !== req.user!.id) {
+        return res.status(403).json({ message: "Forbidden - only the ride's rider can request edits" });
+      }
+
+      // Check if ride is in a valid state for editing
+      if (!["scheduled"].includes(ride.status)) {
+        return res.status(400).json({ 
+          message: "Only scheduled rides that haven't started can be edited" 
+        });
+      }
+
+      // Check if there's already a pending edit for this ride
+      const pendingEdits = await storage.getPendingRideEditsByRide(rideId);
+      if (pendingEdits.length > 0) {
+        return res.status(400).json({ 
+          message: "This ride already has a pending edit request" 
+        });
+      }
+
+      // Save the original ride data
+      const originalData = ride;
+
+      // Fix any date format issues in request body
+      let fixedBody = {...req.body};
+      if (fixedBody.scheduledTime && typeof fixedBody.scheduledTime === 'string') {
+        try {
+          // Add seconds to the date string if missing
+          if (fixedBody.scheduledTime.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+            fixedBody.scheduledTime = fixedBody.scheduledTime + ":00";
+          }
+          console.log("Parsing date:", fixedBody.scheduledTime);
+          fixedBody.scheduledTime = new Date(fixedBody.scheduledTime);
+        } catch (e) {
+          console.error("Date parsing error:", e);
+          return res.status(400).json({ message: "Invalid date format in scheduledTime" });
+        }
+      }
+
+      // Build the proposed data from the request body
+      const proposedData = { ...ride, ...fixedBody };
+
+      console.log("Proposed data scheduledTime:", proposedData.scheduledTime);
+
+      const editData = {
+        rideId,
+        requestedById: req.user!.id,
+        status: "pending",
+        originalData,
+        proposedData,
+        requestNotes: fixedBody.requestNotes || null,
+        responseNotes: null
+      };
+
+      console.log("Preparing to save ride edit with data:", JSON.stringify({
+        rideId,
+        requestedById: req.user!.id,
+        proposedScheduledTime: proposedData.scheduledTime
+      }, null, 2));
+
+      // Create the edit request
+      const rideEdit = await storage.createRideEdit(insertRideEditSchema.parse(editData));
+
+      // Update ride status to show it's pending an edit
+      await storage.updateRide(rideId, { status: "edit_pending" });
+
+      // Send notification to the driver about the edit request
+      if (ride.driverId) {
+        const driver = await storage.getUser(ride.driverId);
+        const rider = await storage.getUser(req.user!.id);
+
+        if (driver && rider) {
+          // Send notification to driver about the edit request
+          await notificationService.sendRideEditRequestNotification(
+            ride,
+            rideEdit,
+            rider
+          );
+        }
+      }
+
+      res.status(201).json(rideEdit);
+    } catch (error) {
+      console.error("Error creating ride edit request:", error);
+      console.error("Request body:", JSON.stringify(req.body, null, 2));
+      if (error instanceof Error) {
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+        return res.status(500).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Get pending edit requests for a ride
+  app.get("/api/rides/:rideId/edits", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.rideId);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check permissions - only rider or assigned driver can view edits
+      if (ride.riderId !== req.user!.id && ride.driverId !== req.user!.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const edits = await storage.getPendingRideEditsByRide(rideId);
+      res.json(edits);
+    } catch (error) {
+      console.error("Error fetching ride edits:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Respond to a ride edit request (driver-only)
+  app.post("/api/ride-edits/:editId/respond", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const editId = parseInt(req.params.editId);
+      const { accept, responseNotes } = req.body;
+
+      if (typeof accept !== 'boolean') {
+        return res.status(400).json({ message: "Missing required 'accept' field (boolean)" });
+      }
+
+      const rideEdit = await storage.getRideEdit(editId);
+
+      if (!rideEdit) {
+        return res.status(404).json({ message: "Ride edit request not found" });
+      }
+
+      const ride = await storage.getRide(rideEdit.rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check if user is the assigned driver
+      if (req.user!.id !== ride.driverId) {
+        return res.status(403).json({ message: "Only the assigned driver can respond to edit requests" });
+      }
+
+      // Check if edit is still pending
+      if (rideEdit.status !== "pending") {
+        return res.status(400).json({ message: "This edit request has already been processed" });
+      }
+
+      // Process the response
+      const updatedEdit = await storage.respondToRideEdit(editId, accept, responseNotes);
+
+      // Send notification to the rider about the driver's response
+      if (updatedEdit) {
+        const rider = await storage.getUser(ride.riderId);
+
+        if (rider) {
+          // Send notification to rider about the edit response
+          await notificationService.sendRideEditResponseNotification(
+            ride,
+            updatedEdit,
+            req.user!,
+            accept
+          );
+        }
+      }
+
+      res.json(updatedEdit);
+    } catch (error) {
+      console.error("Error responding to ride edit:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // This endpoint is for drivers to accept final offers/counter-offers from riders
+  app.post("/api/bids/:bidId/driver-accept", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const bidId = parseInt(req.params.bidId);
+      const bid = await storage.getBid(bidId);
+
+      if (!bid) {
+        return res.status(404).json({ message: "Bid not found" });
+      }
+
+      // Check if the user is the driver for this bid
+      if (bid.driverId !== req.user!.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Check if the bid is in a valid state for driver acceptance
+      if (bid.status !== "selected" && bid.status !== "countered") {
+        return res.status(400).json({ message: "Bid cannot be accepted in its current state" });
+      }
+
+      const ride = await storage.getRide(bid.rideId);
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Update bid status to accepted and ride status to scheduled
+      await storage.updateBid(bidId, { status: "accepted" });
+      const updatedRide = await storage.updateRide(ride.id, { 
+        status: "scheduled",
+        driverId: bid.driverId,
+        finalPrice: bid.amount
+      });
+
+      if (updatedRide) {
+        // Send notification to rider about driver acceptance
+        await notificationService.createAndSendNotification({
+          userId: ride.riderId,
+          type: NotificationType.BID_ACCEPTED,
+          title: "Driver Accepted Your Offer",
+          message: `Your driver has accepted the ride for $${bid.amount.toFixed(2)}. Your ride is now scheduled.`,
+          link: `/rider/rides/${ride.id}`
+        });
+
+        res.json({ 
+          message: "Bid accepted successfully",
+          ride: updatedRide,
+          bid: { ...bid, status: "accepted" }
+        });
+      } else {
+        res.status(500).json({ message: "Failed to update ride" });
+      }
+    } catch (error) {
+      console.error("Error accepting driver bid:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // This endpoint is for riders to accept bids from drivers
+  app.post("/api/bids/:bidId/accept", isAuthenticated, hasRole("rider"), async (req, res) => {
+    try {
+      const bidId = parseInt(req.params.bidId);
+      const bid = await storage.getBid(bidId);
+
+      if (!bid) {
+        return res.status(404).json({ message: "Bid not found" });
+      }
+
+      const ride = await storage.getRide(bid.rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check if the user is the rider for this ride
+      if (ride.riderId !== req.user!.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Check if the ride is in a valid state for accepting bids
+      if (ride.status !== "bidding") {
+        return res.status(400).json({ message: "Ride is not in bidding state" });
+      }
+
+      // Get all bids for this ride before accepting one
+      const allBids = await storage.getBidsByRide(ride.id);
+
+      // Accept the selected bid and update the ride
+      const updatedRide = await storage.acceptBid(bidId, ride.id);
+
+      if (updatedRide) {
+        try {
+          // Automatically process payment using saved payment methods
+          const paymentResult = await automaticPaymentService.processRidePayment(updatedRide.id);
+          
+          if (paymentResult.success) {
+            console.log(`Payment processed successfully for ride ${updatedRide.id}`);
+          } else if (paymentResult.requiresAction) {
+            // 3D Secure or additional authentication required
+            console.log(`Payment requires additional authentication for ride ${updatedRide.id}`);
+            // Ride stays in payment_pending status
+          } else {
+            // Payment failed - notify user and handle gracefully
+            console.log(`Payment failed for ride ${updatedRide.id}: ${paymentResult.error}`);
+            await automaticPaymentService.handlePaymentFailure(updatedRide.id, paymentResult.error || "Payment processing failed");
+          }
+
+          // Send a friendly notification to the driver about their accepted bid
+          const notification = await notificationService.sendBidAcceptedNotification(bid, updatedRide);
+
+          // Broadcast the bid status update through WebSockets
+          broadcastBidUpdate(bid, updatedRide);
+
+          // Also broadcast the ride status change
+          broadcastRideStatusUpdate(
+            updatedRide, 
+            "bidding", 
+            "scheduled", 
+            req.user!
+          );
+
+          // If notification was created, broadcast it to the driver
+          if (notification && bid.driverId) {
+            broadcastNotification(bid.driverId, notification);
+          }
+
+          // Handle notifications for other drivers with rejected bids
+          const otherBids = allBids.filter(b => 
+            b.id !== bidId && 
+            b.status !== "rejected" && 
+            b.status !== "withdrawn" &&
+            b.driverId !== bid.driverId
+          );
+
+          // Send rejection notifications to all other drivers
+          for (const otherBid of otherBids) {
+            try {
+              // Send bid rejected notification
+              const rejectionNotification = await notificationService.sendBidRejectedNotification(
+                otherBid,
+                updatedRide
+              );
+
+              // Broadcast the rejection through WebSockets
+              const rejectedBid = await storage.getBid(otherBid.id);
+              if (rejectedBid) {
+                broadcastBidUpdate(rejectedBid, updatedRide);
+
+                // Broadcast the notification to the driver
+                if (rejectionNotification && rejectedBid.driverId) {
+                  broadcastNotification(rejectedBid.driverId, rejectionNotification);
+                }
+              }
+            } catch (error) {
+              console.error(`Failed to send bid rejected notification to driver ${otherBid.driverId}:`, error);
+              // Continue with other notifications even if one fails
+            }
+          }
+        } catch (error) {
+          console.error("Failed to send bid accepted notification:", error);
+          // Continue even if notification fails
+        }
+      }
+
+      res.json(updatedRide);
+    } catch (error) {
+      console.error("Error accepting bid:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // This endpoint is for drivers to accept initial rider bids
+  app.post("/api/rides/:rideId/accept-initial", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.rideId);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check if the ride is in a valid state for accepting initial bids
+      if (ride.status !== "requested" && ride.status !== "bidding") {
+        return res.status(400).json({ message: "Ride is not in a state where initial bids can be accepted" });
+      }
+
+      // Get driver ID from authenticated user
+      const driverId = req.user!.id;
+
+      // Create a bid with the initial price
+      if (!ride.riderBid) {
+        return res.status(400).json({ message: "This ride doesn't have an initial price set by the rider" });
+      }
+
+      // Create bid using the expected format for Drizzle, without any ETA fields
+      // as they don't exist in the actual database yet
+      const bidData = {
+        rideId: ride.id,
+        driverId: driverId,
+        amount: ride.riderBid,
+        status: "accepted", // Set status directly to accepted
+        notes: "Initial price accepted",
+        counterParty: null, // Handle optional enum field
+        parentBidId: null,
+        bidCount: 1
+      };
+
+      // Add bid and update ride in a single operation
+      const bid = await storage.createBid(bidData);
+
+      if (!bid) {
+        return res.status(500).json({ message: "Failed to create bid" });
+      }
+
+      const updatedRide = await storage.acceptBid(bid.id, ride.id);
+
+      if (updatedRide) {
+        try {
+          // Notify the rider that their ride has been accepted at the initial price
+          const notification = await notificationService.sendBidAcceptedNotification(bid, updatedRide);
+
+          // Broadcast the bid status update through WebSockets
+          broadcastBidUpdate(bid, updatedRide);
+
+          // Also broadcast the ride status change
+          broadcastRideStatusUpdate(
+            updatedRide, 
+            "requested", 
+            "scheduled", 
+            req.user!
+          );
+
+          // If notification was created, broadcast it to the rider
+          if (notification) {
+            broadcastNotification(ride.riderId, notification);
+          }
+        } catch (error) {
+          console.error("Failed to send initial accept notification:", error);
+          // Continue even if notification fails
+        }
+      }
+
+      res.json(updatedRide);
+    } catch (error) {
+      console.error("Error accepting initial bid:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Create a counter-offer for an existing bid
+  app.post("/api/bids/:bidId/counter", isAuthenticated, async (req, res) => {
+    try {
+      const bidId = parseInt(req.params.bidId);
+      const { amount: rawAmount, notes } = req.body;
+      const amount = Number(rawAmount);
+
+      if (!amount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Get the original bid
+      const originalBid = await storage.getBid(bidId);
+      if (!originalBid) {
+        return res.status(404).json({ message: "Bid not found" });
+      }
+
+      // Get the ride to check permissions
+      const ride = await storage.getRide(originalBid.rideId);
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Determine who is making the counter-offer
+      let counterParty: 'rider' | 'driver';
+
+      // If the user is the ride's rider
+      if (req.user!.id === ride.riderId) {
+        counterParty = 'rider';
+      } 
+      // If the user is the bid's driver
+      else if (req.user!.id === originalBid.driverId) {
+        counterParty = 'driver';
+      }
+      else {
+        return res.status(403).json({ 
+          message: "You don't have permission to counter this bid" 
+        });
+      }
+
+      // Check if this bid can be countered
+      if (originalBid.status !== 'pending' && originalBid.status !== 'countered') {
+        return res.status(400).json({ 
+          message: "This bid cannot be countered" 
+        });
+      }
+
+      // Get all bids for this ride to count total offers
+      const allBids = await storage.getBidsByRide(originalBid.rideId);
+
+      // Count total bids (initial bid + counter offers)
+      const totalBids = allBids.length;
+      const MAX_TOTAL_BIDS = 3;
+
+      // Check if we've reached maximum number of total bids (3 total between rider and driver)
+      if (totalBids >= MAX_TOTAL_BIDS) {
+        return res.status(400).json({ 
+          message: `Maximum number of offers reached for this ride (limit: ${MAX_TOTAL_BIDS})` 
+        });
+      }
+
+      // Validate counter-offer amount is within allowed range (30% flexibility)
+      if (counterParty === 'driver') {
+        // Driver can adjust their price within 30% range
+        const minAmount = originalBid.amount * 0.7;
+        if (amount < minAmount) {
+          return res.status(400).json({
+            message: `Counter-offer must be at least $${minAmount.toFixed(2)} (70% of original amount)`
+          });
+        }
+
+        // Driver can increase price up to 30% over original
+        const maxAmount = originalBid.amount * 1.3;
+        if (amount > maxAmount) {
+          return res.status(400).json({
+            message: `Counter-offer cannot exceed $${maxAmount.toFixed(2)} (130% of original amount)`
+          });
+        }
+      } else {
+        // Rider can also adjust within 30% range (same as driver)
+        const minAmount = originalBid.amount * 0.7;
+        if (amount < minAmount) {
+          return res.status(400).json({
+            message: `Counter-offer must be at least $${minAmount.toFixed(2)} (70% of original amount)`
+          });
+        }
+
+        const maxAmount = originalBid.amount * 1.3;
+        if (amount > maxAmount) {
+          return res.status(400).json({
+            message: `Counter-offer cannot exceed $${maxAmount.toFixed(2)} (130% of original amount)`
+          });
+        }
+      }
+
+      // Create the counter-offer
+      const counterOffer = await storage.createCounterOffer(
+        bidId,
+        counterParty,
+        amount,
+        notes
+      );
+
+      if (!counterOffer) {
+        return res.status(500).json({ 
+          message: "Failed to create counter-offer" 
+        });
+      }
+
+      // Get the user who submitted the counter-offer (the current user)
+      const fromUser = req.user!;
+
+      // Get the user who will receive the notification
+      let toUserId: number | null = null;
+      if (counterParty === 'rider') {
+        // Rider is making the counter-offer, notify the driver
+        toUserId = originalBid.driverId;
+      } else {
+        // Driver is making the counter-offer, notify the rider
+        toUserId = ride.riderId;
+      }
+
+      // Send personalized notification about the counter-offer
+      if (toUserId) {
+        const toUser = await storage.getUser(toUserId);
+        if (toUser) {
+          try {
+            const notification = await notificationService.sendCounterOfferNotification(
+              counterOffer,
+              fromUser,
+              toUser,
+              ride
+            );
+
+            // Broadcast the bid update through WebSockets
+            broadcastBidUpdate(counterOffer, ride);
+
+            // If notification was created, broadcast it to the recipient
+            if (notification) {
+              broadcastNotification(toUserId, notification);
+            }
+          } catch (error) {
+            console.error("Failed to send counter offer notification:", error);
+            // Continue even if notification fails
+          }
+        }
+      }
+
+      res.status(201).json(counterOffer);
+    } catch (error) {
+      console.error('Error creating counter-offer:', error);
+      res.status(500).json({ message: "Error creating counter-offer" });
+    }
+  });
+
+  // Get the counter-offer history for a bid
+  app.get("/api/bids/:bidId/history", isAuthenticated, async (req, res) => {
+    try {
+      const bidId = parseInt(req.params.bidId);
+
+      // First get the bid to check permissions
+      const bid = await storage.getBid(bidId);
+      if (!bid) {
+        return res.status(404).json({ message: "Bid not found" });
+      }
+
+      // Get the ride to check permissions
+      const ride = await storage.getRide(bid.rideId);
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Only the rider or the driver involved can see the counter-offer history
+      if (req.user!.id !== ride.riderId && req.user!.id !== bid.driverId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Fetch the full bid history chain
+      const bidHistory = await storage.getBidHistory(bidId);
+
+      res.json(bidHistory);
+    } catch (error) {
+      console.error('Error fetching bid history:', error);
+      res.status(500).json({ message: "Error fetching bid history" });
+    }
+  });
+
+  // Get the bid count for a ride
+  app.get("/api/rides/:rideId/bid-count", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.rideId);
+
+      if (isNaN(rideId)) {
+        return res.status(400).json({ message: "Invalid ride ID" });
+      }
+
+      // Get the ride to check permissions
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check permissions: only the ride owner or driver can see the bid count
+      const isRideOwner = ride.riderId === req.user!.id;
+      const hasDriverBid = req.user!.role === "driver" && await storage.hasDriverPlacedBid(rideId, req.user!.id);
+
+      if (req.user!.role !== "admin" && !isRideOwner && !hasDriverBid) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Count all bids for this ride
+      const count = await storage.countBidsForRide(rideId);
+
+      res.json({ count });
+    } catch (error) {
+      console.error("Error getting bid count:", error);
+      res.status(500).json({ message: "Error getting bid count" });
+    }
+  });
+
+  // Admin routes
+  app.get("/api/admin/stats", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const activeRiders = await storage.getActiveRidersCount();
+      const activeDrivers = await storage.getActiveDriversCount();
+      const completedRides = await storage.getCompletedRidesCount();
+
+      res.json({
+        activeRiders,
+        activeDrivers,
+        completedRides
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Admin routes have been moved to their own file
+
+  // Promo code routes
+  app.post("/api/validate-promo-code", isAuthenticated, async (req, res) => {
+    try {
+      const { code, rideAmount } = req.body;
+      
+      if (!code) {
+        return res.status(400).json({ message: "Promo code is required" });
+      }
+
+      if (!rideAmount || rideAmount <= 0) {
+        return res.status(400).json({ message: "Valid ride amount is required" });
+      }
+
+      // Get the promo code from database
+      const promoCode = await storage.getPromoCodeByCode(code.toUpperCase());
+      
+      if (!promoCode) {
+        return res.status(404).json({ message: "Invalid promo code" });
+      }
+
+      // Check if promo code is active
+      if (!promoCode.isActive) {
+        return res.status(400).json({ message: "This promo code is no longer active" });
+      }
+
+      // Check if promo code has expired
+      if (promoCode.expiresAt && new Date() > new Date(promoCode.expiresAt)) {
+        return res.status(400).json({ message: "This promo code has expired" });
+      }
+
+      // Check usage limits
+      if (promoCode.maxUses !== null && promoCode.usedCount >= promoCode.maxUses) {
+        return res.status(400).json({ message: "This promo code has reached its usage limit" });
+      }
+
+      // Check minimum amount requirement
+      if (promoCode.minimumAmount && promoCode.minimumAmount > 0 && rideAmount < promoCode.minimumAmount) {
+        return res.status(400).json({ 
+          message: `This promo code requires a minimum amount of $${promoCode.minimumAmount.toFixed(2)}` 
+        });
+      }
+
+      // Check if user's role is eligible
+      const applicableRoles = Array.isArray(promoCode.applicableRoles) 
+        ? promoCode.applicableRoles 
+        : JSON.parse(promoCode.applicableRoles as string);
+      
+      if (!applicableRoles.includes(req.user!.role)) {
+        return res.status(400).json({ message: "This promo code is not applicable to your account type" });
+      }
+
+      // Calculate discount
+      let discountAmount = 0;
+      let finalAmount = rideAmount;
+
+      switch (promoCode.discountType) {
+        case 'fixed_amount':
+          discountAmount = Math.min(promoCode.discountValue, rideAmount);
+          finalAmount = Math.max(0, rideAmount - discountAmount);
+          break;
+        case 'percentage':
+          discountAmount = (rideAmount * promoCode.discountValue) / 100;
+          finalAmount = Math.max(0, rideAmount - discountAmount);
+          break;
+        case 'set_price':
+          discountAmount = Math.max(0, rideAmount - promoCode.discountValue);
+          finalAmount = promoCode.discountValue;
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid discount type" });
+      }
+
+      res.json({
+        valid: true,
+        promoCode: {
+          id: promoCode.id,
+          code: promoCode.code,
+          description: promoCode.description,
+          discountType: promoCode.discountType
+        },
+        originalAmount: rideAmount,
+        discountAmount: Math.round(discountAmount * 100) / 100,
+        finalAmount: Math.round(finalAmount * 100) / 100,
+        isFreeRide: finalAmount === 0
+      });
+    } catch (error) {
+      console.error('Error validating promo code:', error);
+      res.status(500).json({ message: "Error validating promo code" });
+    }
+  });
+
+  app.post("/api/apply-promo-code", isAuthenticated, async (req, res) => {
+    try {
+      const { promoCodeId, rideId, originalAmount, discountAmount, finalAmount } = req.body;
+
+      if (!promoCodeId || !rideId || originalAmount === undefined || 
+          discountAmount === undefined || finalAmount === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Verify the ride belongs to the user
+      const ride = await storage.getRide(rideId);
+      if (!ride || ride.riderId !== req.user!.id) {
+        return res.status(403).json({ message: "Unauthorized to apply promo code to this ride" });
+      }
+
+      // Record the promo code usage
+      const usage = await storage.createPromoCodeUsage({
+        promoCodeId,
+        userId: req.user!.id,
+        rideId,
+        originalAmount,
+        discountAmount,
+        finalAmount
+      });
+
+      // Update the promo code usage count
+      await storage.incrementPromoCodeUsage(promoCodeId);
+
+      // Update the ride with the final amount and promo code info
+      await storage.updateRideWithPromoCode(rideId, finalAmount, promoCodeId);
+
+      res.json({
+        success: true,
+        usage,
+        message: finalAmount === 0 ? "Promo code applied - ride is now free!" : "Promo code applied successfully"
+      });
+    } catch (error) {
+      console.error('Error applying promo code:', error);
+      res.status(500).json({ message: "Error applying promo code" });
+    }
+  });
+
+  // Payment routes - moved to /api/payment/* in server/routes/payment.ts
+
+  // Payment webhook - moved to /api/payment/* in server/routes/payment.ts
+
+  app.post("/api/complete-ride/:rideId", isAuthenticated, hasRole("driver"), async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.rideId);
+      const ride = await storage.getRide(rideId);
+
+      if (!ride) {
+        return res.status(404).json({ message: "Ride not found" });
+      }
+
+      // Check if user is the assigned driver
+      if (req.user!.id !== ride.driverId) {
+        return res.status(403).json({ message: "Unauthorized to complete this ride" });
+      }
+
+      // Check if ride is in a valid state to complete
+      if (ride.status !== "in_progress" && ride.status !== "paid") {
+        return res.status(400).json({ 
+          message: "Ride is not ready to be completed. Must be in 'in_progress' or 'paid' state." 
+        });
+      }
+
+      const updatedRide = await storage.updateRide(ride.id, { status: "completed" });
+      res.json(updatedRide);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Admin endpoint to view driver registration progress
+  app.get("/api/admin/driver-registration-progress/:driverId", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const driverId = parseInt(req.params.driverId);
+      
+      if (!driverId) {
+        return res.status(400).json({ message: "Driver ID is required" });
+      }
+
+      // Get the driver registration progress
+      const progress = await storage.getDriverRegistrationProgress(driverId);
+      
+      if (!progress) {
+        return res.status(404).json({ message: "No registration progress found for this driver" });
+      }
+
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching driver registration progress:", error);
+      res.status(500).json({ message: "Failed to fetch registration progress" });
+    }
+  });
+
+  // Registration progress endpoints
+  app.post("/api/registration-progress", isAuthenticated, async (req, res) => {
+    try {
+      // Check if user is a driver
+      if (req.user?.role !== "driver") {
+        return res.status(403).json({ message: "Only drivers can save registration progress" });
+      }
+
+      const userId = req.user.id;
+      const { step, formData, vehicleData, availabilitySettings } = req.body;
+
+      if (step !== 0 && (!step || typeof step !== 'number')) {
+        return res.status(400).json({ message: "Step is required and must be a number" });
+      }
+
+      // Get existing progress data (if any)
+      const existingProgress = await storage.getDriverRegistrationProgress(userId);
+
+      // Prepare form and vehicle data, ensuring they are kept separate
+      // If the current step is handling personal info (step 0), use the new form data
+      // If the current step is handling vehicle info (step 1), use the new vehicle data
+      // For other steps, preserve existing data
+      let finalFormData = formData;
+      let finalVehicleData = vehicleData;
+
+      if (existingProgress) {
+        if (step !== 0 && existingProgress.formData) {
+          // If we're not on the personal info step, preserve existing personal info
+          finalFormData = finalFormData || existingProgress.formData;
+        }
+
+        if (step !== 1 && existingProgress.vehicleData) {
+          // If we're not on the vehicle info step, preserve existing vehicle info
+          finalVehicleData = finalVehicleData || existingProgress.vehicleData;
+        }
+      }
+
+      // Use the storage interface to save progress
+      const progressData = {
+        step,
+        formData: finalFormData || null,
+        vehicleData: finalVehicleData || null,
+        availabilitySettings: availabilitySettings || (existingProgress?.availabilitySettings ?? null)
+      };
+
+      const savedProgress = await storage.saveDriverRegistrationProgress(userId, progressData);
+
+      console.log(`Saved registration progress for user ${userId} at step ${step}`);
+      res.status(200).json({ message: "Progress saved", ...savedProgress });
+    } catch (error) {
+      console.error("Error saving registration progress:", error);
+      res.status(500).json({ message: "Failed to save progress" });
+    }
+  });
+
+  app.get("/api/registration-progress", isAuthenticated, async (req, res) => {
+    try {
+      // Check if user is a driver
+      if (req.user?.role !== "driver") {
+        return res.status(403).json({ message: "Only drivers can retrieve registration progress" });
+      }
+
+      const userId = req.user.id;
+
+      // Use the storage interface to get progress
+      const progress = await storage.getDriverRegistrationProgress(userId);
+
+      // If no progress found, return default values
+      if (!progress) {
+        return res.status(200).json({ 
+          step: 0,
+          formData: null,
+          vehicleData: null,
+          availabilitySettings: null,
+          lastSaved: new Date()
+        });
+      }
+
+      res.status(200).json(progress);
+    } catch (error) {
+      console.error("Error retrieving registration progress:", error);
+      res.status(500).json({ message: "Failed to retrieve progress" });
+    }
+  });
+
+  // Rating routes
+  app.post("/api/ratings", isAuthenticated, async (req, res) => {
+    try {
+      const fromUserId = req.user!.id;
+      const data = insertRatingSchema.parse({
+        ...req.body,
+        fromUserId,
+      });
+
+      const rating = await storage.createRating(data);
+      res.status(201).json(rating);
+    } catch (error) {
+      console.error("Error creating rating:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.get("/api/ratings/user/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const isRatingReceived = req.query.received === "true";
+
+      const ratings = await storage.getUserRatings(userId, isRatingReceived);
+      res.json(ratings || []);
+    } catch (error) {
+      console.error("Error fetching user ratings:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/ratings/ride/:rideId", isAuthenticated, async (req, res) => {
+    try {
+      const rideId = parseInt(req.params.rideId);
+      const ratings = await storage.getRatingsByRide(rideId);
+      res.json(ratings || []);
+    } catch (error) {
+      console.error("Error fetching ride ratings:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Driver membership cancellation
+  app.post("/api/driver/cancel-membership", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { reason, confirmCancel } = req.body;
+
+      // Verify user is a driver
+      if (req.user?.role !== 'driver') {
+        return res.status(403).json({ message: "Only drivers can cancel membership" });
+      }
+
+      // Validate required fields
+      if (!reason || !confirmCancel) {
+        return res.status(400).json({ message: "Reason and confirmation are required" });
+      }
+
+      if (confirmCancel !== true) {
+        return res.status(400).json({ message: "Confirmation required to cancel membership" });
+      }
+
+      // Cancel membership (deactivate but preserve data)
+      const cancelledMembership = await storage.cancelDriverMembership(userId, reason);
+
+      res.status(200).json({ 
+        message: "Membership cancelled successfully",
+        cancelledAt: new Date(),
+        reason: reason
+      });
+    } catch (error) {
+      console.error("Error cancelling driver membership:", error);
+      res.status(500).json({ message: "Failed to cancel membership" });
+    }
+  });
+
+  // Driver payout endpoints
+  app.get("/api/driver/payouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Verify user is a driver
+      if (req.user?.role !== 'driver') {
+        return res.status(403).json({ message: "Only drivers can view payouts" });
+      }
+
+      const driver = await storage.getDriverByUserId(userId);
+      if (!driver) {
+        return res.status(404).json({ message: "Driver not found" });
+      }
+
+      const limit = parseInt(req.query.limit as string) || 10;
+      const payouts = await storage.getDriverPayouts(driver.id, limit);
+      
+      res.json(payouts);
+    } catch (error) {
+      console.error("Error fetching driver payouts:", error);
+      res.status(500).json({ message: "Failed to fetch payouts" });
+    }
+  });
+
+  app.get("/api/driver/payouts/summary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Verify user is a driver
+      if (req.user?.role !== 'driver') {
+        return res.status(403).json({ message: "Only drivers can view payout summary" });
+      }
+
+      const driver = await storage.getDriverByUserId(userId);
+      if (!driver) {
+        return res.status(404).json({ message: "Driver not found" });
+      }
+
+      const { driverPayoutService } = await import('./driver-payout-service');
+      
+      // Get last 30 days by default
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+      
+      const payouts = await driverPayoutService.getDriverPayoutHistory(driver.id, 100);
+      const recentPayouts = payouts.filter(p => 
+        new Date(p.createdAt) >= startDate && new Date(p.createdAt) <= endDate
+      );
+
+      const summary = {
+        totalEarnings: recentPayouts.reduce((sum, p) => sum + parseFloat(p.driverAmount), 0),
+        totalPayouts: recentPayouts.length,
+        completedPayouts: recentPayouts.filter(p => p.status === 'completed').length,
+        pendingPayouts: recentPayouts.filter(p => p.status === 'pending').length,
+        failedPayouts: recentPayouts.filter(p => p.status === 'failed').length
+      };
+
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching payout summary:", error);
+      res.status(500).json({ message: "Failed to fetch payout summary" });
+    }
+  });
+
+  // Rating Response routes
+  app.post("/api/ratings/:ratingId/response", isAuthenticated, async (req, res) => {
+    try {
+      const ratingId = parseInt(req.params.ratingId);
+      const responderId = req.user!.id;
+
+      // Verify the rating exists and belongs to a ride that this user was involved in
+      const rating = await storage.getRating(ratingId);
+      if (!rating) {
+        return res.status(404).json({ message: "Rating not found" });
+      }
+
+      // Make sure the responder is the one who received the rating
+      if (rating.toUserId !== responderId) {
+        return res.status(403).json({ message: "You can only respond to ratings about yourself" });
+      }
+
+      const data = insertRatingResponseSchema.parse({
+        ...req.body,
+        ratingId,
+        responderId
+      });
+
+      const response = await storage.createRatingResponse(data);
+      res.status(201).json(response);
+    } catch (error) {
+      console.error("Error creating rating response:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Invalid request" });
+    }
+  });
+
+  app.get("/api/ratings/:ratingId/response", isAuthenticated, async (req, res) => {
+    try {
+      const ratingId = parseInt(req.params.ratingId);
+      const response = await storage.getRatingResponse(ratingId);
+
+      if (!response) {
+        return res.status(404).json({ message: "No response found for this rating" });
+      }
+
+      res.json(response);
+    } catch (error) {
+      console.error("Error fetching rating response:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Driver Achievement routes
+  app.get("/api/drivers/:driverId/achievements", isAuthenticated, async (req, res) => {
+    try {
+      const driverId = parseInt(req.params.driverId);
+
+      // If requesting other driver's achievements, verify the user is authorized
+      if (driverId !== req.user!.id && req.user!.role !== 'admin') {
+        // For non-admin users, only public profile data should be visible
+        const driver = await storage.getUser(driverId);
+        if (!driver || driver.role !== 'driver') {
+          return res.status(404).json({ message: "Driver not found" });
+        }
+      }
+
+      const achievements = await storage.getDriverAchievements(driverId);
+      res.json(achievements || []);
+    } catch (error) {
+      console.error("Error fetching driver achievements:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Rating Analytics routes
+  app.get("/api/users/:userId/rating-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+
+      // If requesting other user's analytics, verify the user is authorized
+      if (userId !== req.user!.id && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: "Not authorized to view this user's analytics" });
+      }
+
+      const analytics = await storage.getDetailedRatingAnalytics(userId);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching rating analytics:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  const httpServer = createServer(app);
+
+  // WebSocket completely removed - using polling-only real-time updates
+  // All real-time communication now handled via HTTP polling and SSE endpoints
+  console.log('Server initialized with polling-only real-time communication');
+
+  // Check notification service configuration status (Admin only)
+  app.get("/api/admin/notification-status", isAuthenticated, hasRole("admin"), (req, res) => {
+    try {
+      const status = {
+        twilio: {
+          configured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER),
+          accountSid: process.env.TWILIO_ACCOUNT_SID ? `${process.env.TWILIO_ACCOUNT_SID.substring(0, 8)}...` : null,
+          phoneNumber: process.env.TWILIO_PHONE_NUMBER || null
+        },
+        sendgrid: {
+          configured: !!process.env.SENDGRID_API_KEY,
+          apiKey: process.env.SENDGRID_API_KEY ? `${process.env.SENDGRID_API_KEY.substring(0, 8)}...` : null,
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      res.json(status);
+    } catch (error) {
+      console.error("Error checking notification status:", error);
+      res.status(500).json({ error: "Failed to check notification service status" });
+    }
+  });
+
+  // Test endpoint for SMS notifications (Admin only)
+  app.post("/api/admin/test-sms", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const { phoneNumber, message } = req.body;
+
+      if (!phoneNumber || !message) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Phone number and message are required" 
+        });
+      }
+
+      // Format message with a friendly character
+      const personalizedMessage = notificationService["personalizeMessage"](
+        message,
+        FriendlyCharacter.ASSISTANT,
+        "Admin"
+      );
+
+      // Send the SMS via Twilio
+      const result = await notificationService["sendSMSNotification"](
+        phoneNumber,
+        personalizedMessage
+      );
+
+      if (result) {
+        res.json({ 
+          success: true, 
+          message: "SMS notification sent successfully" 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: "Failed to send SMS notification" 
+        });
+      }
+    } catch (error) {
+      console.error("Error testing SMS notification:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: error instanceof Error ? error.message : "Internal server error" 
+      });
+    }
+  });
+
+  // Alerts API endpoints
+  app.get("/api/alerts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Use optimized notifications query for better performance
+      const notifications = await optimizedStorage.getNotificationsForUser(userId, 10);
+      
+      // Convert notifications to alerts format
+      const alerts = notifications.map((notification: any) => ({
+        id: `alert_${notification.id}`,
+        type: notification.type === 'RIDE_CANCELLED' ? 'warning' : 
+              notification.type === 'PAYMENT_FAILED' ? 'error' :
+              notification.type === 'RIDE_COMPLETED' ? 'success' : 'info',
+        title: notification.title || 'System Alert',
+        message: notification.message,
+        timestamp: notification.createdAt,
+        isRead: notification.read,
+        actionUrl: notification.link,
+        actionLabel: notification.link ? 'View Details' : undefined
+      }));
+
+      res.json(alerts);
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+      res.status(500).json({ message: "Error fetching alerts" });
+    }
+  });
+
+  app.post("/api/alerts/:alertId/read", isAuthenticated, async (req, res) => {
+    try {
+      const alertId = req.params.alertId;
+      const userId = req.user!.id;
+      
+      // Extract notification ID from alert ID
+      const notificationId = parseInt(alertId.replace('alert_', ''));
+      
+      if (!isNaN(notificationId)) {
+        await storage.markNotificationAsRead(notificationId, userId);
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error marking alert as read:', error);
+      res.status(500).json({ message: "Error marking alert as read" });
+    }
+  });
+
+  app.post("/api/alerts/mark-all-read", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      await storage.markAllNotificationsAsRead(userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error marking all alerts as read:', error);
+      res.status(500).json({ message: "Error marking all alerts as read" });
+    }
+  });
+
+  // Account Management Routes
+  app.post("/api/driver/cancel-membership", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { reason } = req.body;
+      
+      if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+        return res.status(400).json({ message: "Cancellation reason is required" });
+      }
+
+      // Verify user is a driver
+      if (req.user!.role !== 'driver') {
+        return res.status(403).json({ message: "Only drivers can cancel driver membership" });
+      }
+
+      // Get driver profile to check if they have active rides
+      const driverProfile = await storage.getDriverByUserId(userId);
+      if (!driverProfile) {
+        return res.status(404).json({ message: "Driver profile not found" });
+      }
+
+      // Check for active or upcoming rides
+      const activeRides = await storage.getRidesByDriver(userId, 'active');
+      if (activeRides.length > 0) {
+        return res.status(400).json({ 
+          message: "Cannot cancel membership while you have active rides. Please complete or cancel all active rides first." 
+        });
+      }
+
+      // Log the cancellation reason
+      console.log(`Driver ${userId} cancelling membership. Reason: ${reason}`);
+
+      // Update driver status to inactive
+      await storage.updateDriverProfile(userId, {
+        isActive: false,
+        membershipStatus: 'cancelled',
+        cancellationReason: reason,
+        cancellationDate: new Date()
+      });
+
+      // Create a notification for the cancellation
+      await storage.createNotification({
+        userId: userId,
+        type: 'MEMBERSHIP_CANCELLED',
+        title: 'Membership Cancelled',
+        message: `Your driver membership has been cancelled. Thank you for being part of MyAmbulex. If you change your mind, you can reactivate your account anytime.`,
+        read: false,
+        createdAt: new Date(),
+        metadata: {
+          reason: reason,
+          cancellationDate: new Date().toISOString()
+        }
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Driver membership has been cancelled successfully" 
+      });
+    } catch (error) {
+      console.error('Error cancelling driver membership:', error);
+      res.status(500).json({ message: "Error cancelling membership" });
+    }
+  });
+
+  app.put("/api/user/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fullName, email, phone } = req.body;
+
+      // Validate input
+      if (!fullName || !email || !phone) {
+        return res.status(400).json({ message: "Full name, email, and phone are required" });
+      }
+
+      // Check if email is already taken by another user
+      if (email !== req.user!.email) {
+        const existingUser = await storage.getUserByEmail(email);
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(400).json({ message: "Email is already in use by another account" });
+        }
+      }
+
+      // Update user profile
+      const updatedUser = await storage.updateUser(userId, {
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        emailVerified: email !== req.user!.email ? false : req.user!.emailVerified // Reset verification if email changed
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Profile updated successfully",
+        user: {
+          id: updatedUser.id,
+          fullName: updatedUser.fullName,
+          email: updatedUser.email,
+          phone: updatedUser.phone,
+          emailVerified: updatedUser.emailVerified,
+          phoneVerified: updatedUser.phoneVerified
+        }
+      });
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      res.status(500).json({ message: "Error updating profile" });
+    }
+  });
+
+  // Platform Settings API Routes
+  app.get("/api/admin/platform-settings", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const settings = await storage.getAllPlatformSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error getting platform settings:", error);
+      res.status(500).json({ message: "Error getting platform settings" });
+    }
+  });
+
+  app.post("/api/admin/platform-settings", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const { key, value, description } = req.body;
+      
+      if (!key || value === undefined || value === null) {
+        return res.status(400).json({ message: "Key and value are required" });
+      }
+
+      const setting = await storage.setPlatformSetting(key, value, description);
+      res.json(setting);
+    } catch (error) {
+      console.error("Error setting platform setting:", error);
+      res.status(500).json({ message: "Error setting platform setting" });
+    }
+  });
+
+  app.put("/api/admin/platform-settings/:key", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { value, description } = req.body;
+      
+      if (value === undefined || value === null) {
+        return res.status(400).json({ message: "Value is required" });
+      }
+
+      const setting = await storage.setPlatformSetting(key, value, description);
+      res.json(setting);
+    } catch (error) {
+      console.error("Error updating platform setting:", error);
+      res.status(500).json({ message: "Error updating platform setting" });
+    }
+  });
+
+  app.delete("/api/admin/platform-settings/:key", isAuthenticated, hasRole("admin"), async (req, res) => {
+    try {
+      const { key } = req.params;
+      const success = await storage.deletePlatformSetting(key);
+      
+      if (success) {
+        res.json({ message: "Platform setting deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Platform setting not found" });
+      }
+    } catch (error) {
+      console.error("Error deleting platform setting:", error);
+      res.status(500).json({ message: "Error deleting platform setting" });
+    }
+  });
+
+  return httpServer;
+}

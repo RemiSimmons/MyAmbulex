@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Beta Code Test</title>
+</head>
+<body>
+    <h1>Beta Code Detection Test</h1>
+    <div id="result"></div>
+    
+    <script>
+        // Get beta code from URL
+        const params = new URLSearchParams(window.location.search);
+        const betaCode = params.get('beta');
+        
+        const resultDiv = document.getElementById('result');
+        
+        if (betaCode) {
+            resultDiv.innerHTML = `
+                <div style="background: green; color: white; padding: 10px;">
+                    ✅ Beta code detected: ${betaCode}
+                </div>
+            `;
+        } else {
+            resultDiv.innerHTML = `
+                <div style="background: red; color: white; padding: 10px;">
+                    ❌ No beta code found in URL
+                </div>
+            `;
+        }
+        
+        console.log('Current URL:', window.location.href);
+        console.log('Beta code from URL:', betaCode);
+    </script>
+</body>
+</html>

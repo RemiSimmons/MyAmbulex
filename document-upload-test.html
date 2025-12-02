@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Upload Test - MyAmbulex</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .test-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .test-section h2 {
+            color: #0891b2;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .login-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #374151;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #0891b2;
+        }
+        
+        .btn {
+            background: #0891b2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-weight: 600;
+        }
+        
+        .btn:hover {
+            background: #0e7490;
+        }
+        
+        .btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .status-authenticated {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-error {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        
+        .status-pending {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        
+        .document-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .document-card {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            background: #f9fafb;
+            transition: border-color 0.2s;
+        }
+        
+        .document-card:hover {
+            border-color: #0891b2;
+        }
+        
+        .document-card h3 {
+            color: #1e293b;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .document-card p {
+            color: #6b7280;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .file-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 15px;
+            transition: border-color 0.2s;
+        }
+        
+        .file-input:hover {
+            border-color: #0891b2;
+        }
+        
+        .results {
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .results h3 {
+            color: #0f172a;
+            margin-bottom: 15px;
+        }
+        
+        .results pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.9rem;
+        }
+        
+        .success {
+            color: #166534;
+            background: #dcfce7;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        
+        .error {
+            color: #dc2626;
+            background: #fef2f2;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚑 MyAmbulex Document Manager Test</h1>
+            <p>Testing the Centralized Document Upload System</p>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 1: Authentication Test</h2>
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" value="RemiDriver" placeholder="Enter username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" value="password123" placeholder="Enter password">
+                </div>
+            </div>
+            <button class="btn" onclick="testLogin()">Test Login</button>
+            <span id="authStatus" class="status-indicator status-pending">Not Authenticated</span>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 2: Document Fetch Test</h2>
+            <p>Test retrieving existing documents from the database.</p>
+            <button class="btn" onclick="testDocumentFetch()">Fetch Documents</button>
+            <div id="fetchResults" class="results" style="display: none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 3: Document Upload Test</h2>
+            <p>Test uploading different types of documents.</p>
+            
+            <div class="document-grid">
+                <!-- License Front -->
+                <div class="document-card">
+                    <h3>📄 License Photo - Front</h3>
+                    <p>Upload the front side of your driver's license</p>
+                    <input type="file" id="licensePhotoFront" accept="image/*,.pdf" class="file-input">
+                    <button class="btn" onclick="uploadDocument('licensePhotoFront')">Upload License Front</button>
+                    <div id="licensePhotoFront-result" class="results" style="display: none;"></div>
+                </div>
+                
+                <!-- License Back -->
+                <div class="document-card">
+                    <h3>📄 License Photo - Back</h3>
+                    <p>Upload the back side of your driver's license</p>
+                    <input type="file" id="licensePhotoBack" accept="image/*,.pdf" class="file-input">
+                    <button class="btn" onclick="uploadDocument('licensePhotoBack')">Upload License Back</button>
+                    <div id="licensePhotoBack-result" class="results" style="display: none;"></div>
+                </div>
+                
+                <!-- Insurance -->
+                <div class="document-card">
+                    <h3>🛡️ Insurance Document</h3>
+                    <p>Upload your vehicle insurance document</p>
+                    <input type="file" id="insuranceDocument" accept="image/*,.pdf" class="file-input">
+                    <button class="btn" onclick="uploadDocument('insuranceDocument')">Upload Insurance</button>
+                    <div id="insuranceDocument-result" class="results" style="display: none;"></div>
+                </div>
+                
+                <!-- Vehicle Registration -->
+                <div class="document-card">
+                    <h3>🚗 Vehicle Registration</h3>
+                    <p>Upload your vehicle registration document</p>
+                    <input type="file" id="vehicleRegistration" accept="image/*,.pdf" class="file-input">
+                    <button class="btn" onclick="uploadDocument('vehicleRegistration')">Upload Registration</button>
+                    <div id="vehicleRegistration-result" class="results" style="display: none;"></div>
+                </div>
+                
+                <!-- Medical Certification -->
+                <div class="document-card">
+                    <h3>⚕️ Medical Certification</h3>
+                    <p>Upload your medical certification document</p>
+                    <input type="file" id="medicalCertification" accept="image/*,.pdf" class="file-input">
+                    <button class="btn" onclick="uploadDocument('medicalCertification')">Upload Medical Cert</button>
+                    <div id="medicalCertification-result" class="results" style="display: none;"></div>
+                </div>
+                
+                <!-- Background Check -->
+                <div class="document-card">
+                    <h3>🔍 Background Check</h3>
+                    <p>Upload your background check results</p>
+                    <input type="file" id="backgroundCheck" accept="image/*,.pdf" class="file-input">
+                    <button class="btn" onclick="uploadDocument('backgroundCheck')">Upload Background Check</button>
+                    <div id="backgroundCheck-result" class="results" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Step 4: View Document Test</h2>
+            <p>Test viewing uploaded documents.</p>
+            <button class="btn" onclick="testViewDocument()">View Sample Document</button>
+            <div id="viewResults" class="results" style="display: none;"></div>
+        </div>
+    </div>
+    
+    <script>
+        let authToken = null;
+        let sessionCookie = null;
+        
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const statusEl = document.getElementById('authStatus');
+            
+            try {
+                statusEl.textContent = 'Logging in...';
+                statusEl.className = 'status-indicator status-pending';
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusEl.textContent = 'Authenticated ✓';
+                    statusEl.className = 'status-indicator status-authenticated';
+                    
+                    // Store session info
+                    sessionCookie = document.cookie;
+                    console.log('Login successful:', data);
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Login failed');
+                }
+            } catch (error) {
+                statusEl.textContent = 'Authentication Failed ✗';
+                statusEl.className = 'status-indicator status-error';
+                console.error('Login error:', error);
+                alert('Login failed: ' + error.message);
+            }
+        }
+        
+        async function testDocumentFetch() {
+            const resultsEl = document.getElementById('fetchResults');
+            resultsEl.style.display = 'block';
+            resultsEl.innerHTML = '<h3>Fetching documents...</h3>';
+            
+            try {
+                const response = await fetch('/api/driver/documents', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const documents = await response.json();
+                    resultsEl.innerHTML = `
+                        <h3>✅ Documents Retrieved Successfully</h3>
+                        <pre>${JSON.stringify(documents, null, 2)}</pre>
+                    `;
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to fetch documents');
+                }
+            } catch (error) {
+                resultsEl.innerHTML = `
+                    <h3>❌ Document Fetch Failed</h3>
+                    <div class="error">${error.message}</div>
+                `;
+            }
+        }
+        
+        async function uploadDocument(docType) {
+            const fileInput = document.getElementById(docType);
+            const resultEl = document.getElementById(docType + '-result');
+            
+            if (!fileInput.files[0]) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('document', fileInput.files[0]);
+            formData.append('docType', docType);
+            
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '<h3>Uploading...</h3>';
+            
+            try {
+                const response = await fetch('/api/driver/documents/upload', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    resultEl.innerHTML = `
+                        <h3>✅ Upload Successful</h3>
+                        <div class="success">Document uploaded successfully!</div>
+                        <pre>${JSON.stringify(result, null, 2)}</pre>
+                    `;
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Upload failed');
+                }
+            } catch (error) {
+                resultEl.innerHTML = `
+                    <h3>❌ Upload Failed</h3>
+                    <div class="error">${error.message}</div>
+                `;
+            }
+        }
+        
+        async function testViewDocument() {
+            const resultsEl = document.getElementById('viewResults');
+            resultsEl.style.display = 'block';
+            resultsEl.innerHTML = '<h3>Testing document view...</h3>';
+            
+            try {
+                const response = await fetch('/api/driver/documents/view/sample-license-front.txt', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    resultsEl.innerHTML = `
+                        <h3>✅ Document View Test Successful</h3>
+                        <div class="success">Document can be viewed successfully!</div>
+                        <p>Content type: ${blob.type}</p>
+                        <p>Size: ${blob.size} bytes</p>
+                        <button class="btn" onclick="window.open('${url}', '_blank')">View Document</button>
+                    `;
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'View failed');
+                }
+            } catch (error) {
+                resultsEl.innerHTML = `
+                    <h3>❌ Document View Failed</h3>
+                    <div class="error">${error.message}</div>
+                `;
+            }
+        }
+        
+        // Auto-test authentication on page load
+        window.onload = function() {
+            console.log('Document Upload Test Page Loaded');
+            console.log('Available endpoints:');
+            console.log('- POST /api/auth/login');
+            console.log('- GET /api/driver/documents');
+            console.log('- POST /api/driver/documents/upload');
+            console.log('- GET /api/driver/documents/view/:filename');
+        };
+    </script>
+</body>
+</html>

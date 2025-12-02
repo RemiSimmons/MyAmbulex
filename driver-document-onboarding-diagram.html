@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyAmbulex Driver Document Onboarding Flow</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #4A90E2;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .flow-container {
+            padding: 40px;
+        }
+        .step-group {
+            margin-bottom: 50px;
+        }
+        .step-title {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            position: relative;
+        }
+        .step-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background: #4A90E2;
+        }
+        .documents-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        .document-card {
+            background: white;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .document-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            border-color: #4A90E2;
+        }
+        .required {
+            border-color: #e74c3c;
+            background: #fff5f5;
+        }
+        .optional {
+            border-color: #f39c12;
+            background: #fffbf0;
+        }
+        .badge {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            color: white;
+        }
+        .required-badge {
+            background: #e74c3c;
+        }
+        .optional-badge {
+            background: #f39c12;
+        }
+        .document-icon {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 20px;
+            background: #4A90E2;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+        }
+        .document-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .document-description {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.4;
+            margin-bottom: 15px;
+        }
+        .document-details {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.85em;
+            color: #555;
+        }
+        .flow-arrow {
+            text-align: center;
+            margin: 30px 0;
+            font-size: 2em;
+            color: #4A90E2;
+        }
+        .verification-process {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 40px;
+        }
+        .process-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .process-step {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            text-align: center;
+            flex: 1;
+            min-width: 200px;
+        }
+        .process-number {
+            width: 40px;
+            height: 40px;
+            background: #4A90E2;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            font-weight: 600;
+        }
+        .alert-box {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .alert-title {
+            font-weight: 600;
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        .alert-text {
+            color: #856404;
+            margin: 0;
+        }
+        @media (max-width: 768px) {
+            .documents-grid {
+                grid-template-columns: 1fr;
+            }
+            .process-steps {
+                flex-direction: column;
+            }
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>MyAmbulex Driver Document Onboarding</h1>
+            <p>Complete verification requirements for medical transportation drivers</p>
+        </div>
+        
+        <div class="flow-container">
+            <div class="step-group">
+                <h2 class="step-title">Step 1: Basic Vehicle & License Documents</h2>
+                <div class="documents-grid">
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">🪪</div>
+                        <div class="document-title">Driver License</div>
+                        <div class="document-description">Upload front and back of your valid driver's license</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Validity:</strong> Must not be expired
+                        </div>
+                    </div>
+                    
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">🚗</div>
+                        <div class="document-title">Vehicle Insurance</div>
+                        <div class="document-description">Current vehicle insurance policy document</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Coverage:</strong> Commercial or adequate personal coverage
+                        </div>
+                    </div>
+                    
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">📋</div>
+                        <div class="document-title">Vehicle Registration</div>
+                        <div class="document-description">Vehicle registration document from DMV</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Status:</strong> Current and valid
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-arrow">⬇</div>
+
+            <div class="step-group">
+                <h2 class="step-title">Step 2: Verification Documents (All Required)</h2>
+                <div class="documents-grid">
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">🛡️</div>
+                        <div class="document-title">Background Check</div>
+                        <div class="document-description">Background check document from approved provider</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Note:</strong> Must be from certified background check service
+                        </div>
+                    </div>
+                    
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">🧪</div>
+                        <div class="document-title">Drug Test Results</div>
+                        <div class="document-description">Drug test results from approved testing facility</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Validity:</strong> Must be dated within last 90 days
+                        </div>
+                    </div>
+                    
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">📊</div>
+                        <div class="document-title">MVR (Motor Vehicle Record)</div>
+                        <div class="document-description">Motor Vehicle Record from DMV</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Validity:</strong> Must be dated within last 30 days
+                        </div>
+                    </div>
+                    
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">🏥</div>
+                        <div class="document-title">First Aid Certification</div>
+                        <div class="document-description">Current First Aid certification from accredited provider</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Validity:</strong> Must be current and not expired
+                        </div>
+                    </div>
+                    
+                    <div class="document-card required">
+                        <div class="badge required-badge">REQUIRED</div>
+                        <div class="document-icon">❤️</div>
+                        <div class="document-title">CPR Certification</div>
+                        <div class="document-description">Current CPR certification from accredited provider</div>
+                        <div class="document-details">
+                            <strong>Format:</strong> JPG, PNG, PDF<br>
+                            <strong>Max size:</strong> 5MB<br>
+                            <strong>Validity:</strong> Must be current and not expired
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flow-arrow">⬇</div>
+
+            <div class="step-group">
+                <h2 class="step-title">Step 3: Training Modules (Optional)</h2>
+                <div class="documents-grid">
+                    <div class="document-card optional">
+                        <div class="badge optional-badge">OPTIONAL</div>
+                        <div class="document-icon">🎓</div>
+                        <div class="document-title">Safety Training</div>
+                        <div class="document-description">Complete safety and patient care training modules</div>
+                        <div class="document-details">
+                            <strong>Duration:</strong> 2-3 hours<br>
+                            <strong>Content:</strong> Safety protocols, patient handling<br>
+                            <strong>Status:</strong> Optional but recommended
+                        </div>
+                    </div>
+                    
+                    <div class="document-card optional">
+                        <div class="badge optional-badge">OPTIONAL</div>
+                        <div class="document-icon">⚕️</div>
+                        <div class="document-title">Medical Protocols</div>
+                        <div class="document-description">Medical transport protocols and procedures</div>
+                        <div class="document-details">
+                            <strong>Duration:</strong> 1-2 hours<br>
+                            <strong>Content:</strong> Medical equipment, emergency procedures<br>
+                            <strong>Status:</strong> Optional but recommended
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="verification-process">
+                <h3 style="text-align: center; margin-bottom: 30px; color: #333;">Verification Process</h3>
+                <div class="process-steps">
+                    <div class="process-step">
+                        <div class="process-number">1</div>
+                        <h4>Document Upload</h4>
+                        <p>Driver uploads all required documents through the onboarding portal</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="process-number">2</div>
+                        <h4>Manual Review</h4>
+                        <p>Admin staff manually reviews and verifies each document for authenticity</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="process-number">3</div>
+                        <h4>Approval/Rejection</h4>
+                        <p>Documents are approved or rejected with feedback for corrections</p>
+                    </div>
+                    <div class="process-step">
+                        <div class="process-number">4</div>
+                        <h4>Account Activation</h4>
+                        <p>Once all documents approved, driver account is activated for ride acceptance</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert-box">
+                <div class="alert-title">⚠️ Important Requirements</div>
+                <p class="alert-text">
+                    <strong>All 6 verification documents are required:</strong> Background Check, Drug Test Results, MVR Record, First Aid Certification, CPR Certification, plus license and vehicle documents. 
+                    Documents must be valid, up-to-date, and clearly readable. Our team will review submissions and may contact you for additional information.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

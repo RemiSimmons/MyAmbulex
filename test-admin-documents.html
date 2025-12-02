@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Admin Documents API</title>
+</head>
+<body>
+    <h1>Admin Documents API Test</h1>
+    <div id="status">Ready to test...</div>
+    <div id="results"></div>
+    
+    <script>
+        async function testAPI() {
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                // First, login as admin
+                statusDiv.textContent = 'Logging in as admin...';
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'password123'
+                    })
+                });
+                
+                if (loginResponse.ok) {
+                    statusDiv.textContent = 'Admin login successful. Testing documents API...';
+                    
+                    // Test the admin documents API
+                    const docsResponse = await fetch('/api/admin/documents/59');
+                    
+                    if (docsResponse.ok) {
+                        const data = await docsResponse.json();
+                        statusDiv.textContent = 'API call successful!';
+                        resultsDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    } else {
+                        statusDiv.textContent = `API call failed: ${docsResponse.status} ${docsResponse.statusText}`;
+                        const errorText = await docsResponse.text();
+                        resultsDiv.innerHTML = `<pre>Error: ${errorText}</pre>`;
+                    }
+                } else {
+                    statusDiv.textContent = `Login failed: ${loginResponse.status} ${loginResponse.statusText}`;
+                }
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        // Run the test when page loads
+        window.onload = testAPI;
+    </script>
+</body>
+</html>
